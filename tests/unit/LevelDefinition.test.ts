@@ -28,4 +28,14 @@ describe('LevelDefinition runtime schema', () => {
   it('throws a single diagnosable load error for invalid data', () => {
     expect(() => loadLevelDefinition({})).toThrowError(/Invalid LevelDefinition/);
   });
+
+  it('rejects a score star threshold that disagrees with the win target', () => {
+    const result = validateLevelDefinition({
+      ...LEVEL_01,
+      stars: LEVEL_01.stars.map((condition) =>
+        condition.id === 'score_target' ? { ...condition, targetScore: 999 } : condition
+      )
+    });
+    expect(result).toEqual({ valid: false, errors: ['score_target.targetScore must match targetScore'] });
+  });
 });

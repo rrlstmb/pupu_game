@@ -66,9 +66,20 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
 
   validateSpawn(input.spawn, errors);
   validateStars(input.stars, errors);
+  validateScoreTargetConsistency(input, errors);
   return errors.length > 0
     ? { valid: false, errors }
     : { valid: true, definition: input as LevelDefinition };
+}
+
+function validateScoreTargetConsistency(input: Record<string, unknown>, errors: string[]): void {
+  if (!Array.isArray(input.stars) || typeof input.targetScore !== 'number') return;
+  const scoreCondition = input.stars.find(
+    (condition) => isRecord(condition) && condition.id === 'score_target'
+  );
+  if (isRecord(scoreCondition) && scoreCondition.targetScore !== input.targetScore) {
+    errors.push('score_target.targetScore must match targetScore');
+  }
 }
 
 export function loadLevelDefinition(input: unknown): LevelDefinition {

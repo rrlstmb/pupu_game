@@ -4,6 +4,7 @@ import {
   createLevelSession,
   failLevelCaught,
   resetLevelSession,
+  spawnConfigForLevel,
   toggleLevelPause,
   updateLevelMetrics,
   updateLevelSession
@@ -12,6 +13,18 @@ import { hitAccuracy } from '../../src/domain/level/ObjectiveSystem';
 import { evaluateStars } from '../../src/domain/level/StarEvaluation';
 
 describe('LevelDirector', () => {
+  it('projects the authored spawn schedule without scene-owned defaults', () => {
+    const definition = {
+      ...LEVEL_01,
+      seed: 'injected-seed',
+      spawn: { ...LEVEL_01.spawn, intervalSeconds: 2.5, maxActive: 3 }
+    };
+    expect(spawnConfigForLevel(definition)).toEqual({
+      seed: 'injected-seed',
+      ...definition.spawn
+    });
+  });
+
   it('runs countdown before consuming the 90 second level clock', () => {
     let session = createLevelSession(LEVEL_01);
     session = updateLevelSession(session, 2.5);

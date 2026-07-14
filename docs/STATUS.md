@@ -13,7 +13,9 @@ Codex must not set any phase to `PASS`.
 
 ## Current Audit
 
-- Audit: none; Phase 12 implementation is current.
+- Audit: Gate C - Vertical Slice
+- Status: READY_FOR_REVIEW
+- Evidence: `docs/evidence/GATE_C.md`
 - Prompt 13 remains `NOT_STARTED`.
 
 ## Audit History
@@ -21,6 +23,7 @@ Codex must not set any phase to `PASS`.
 - Retro Gate A - Technical and Feel Baseline: `READY_FOR_REVIEW` on 2026-07-14; evidence at `docs/evidence/GATE_A_RETRO.md`.
 - Retro Gate B - Core Loop MVP: `READY_FOR_REVIEW` on 2026-07-14; evidence at `docs/evidence/GATE_B_RETRO.md`.
 - Prompt 09-11 Post-Gate Regression: `READY_FOR_REVIEW` on 2026-07-14; evidence at `docs/evidence/PROMPT_09_11_REGRESSION.md`.
+- Gate C - Vertical Slice: `READY_FOR_REVIEW` on 2026-07-14; evidence at `docs/evidence/GATE_C.md`.
 
 ## Baseline
 

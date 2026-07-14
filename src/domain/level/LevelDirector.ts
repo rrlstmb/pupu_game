@@ -1,4 +1,5 @@
 import type { LevelDefinition } from './LevelDefinition';
+import type { NPCSpawnConfig } from '../npc/NPCModel';
 import { evaluateObjective, hitAccuracy, type LevelMetrics } from './ObjectiveSystem';
 import { evaluateStars, type StarEvaluation } from './StarEvaluation';
 
@@ -27,6 +28,13 @@ export type LevelSession = {
   readonly result?: LevelResult;
   readonly completionCount: number;
 };
+
+export function spawnConfigForLevel(definition: LevelDefinition): NPCSpawnConfig {
+  return {
+    seed: definition.seed,
+    ...definition.spawn
+  };
+}
 
 export function createLevelSession(definition: LevelDefinition, attempt = 1): LevelSession {
   return {

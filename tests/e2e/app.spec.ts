@@ -684,13 +684,24 @@ test('phase 12 runs Level 1 through pause, timeout result, and deterministic cle
   await fireAtHittableNPCAndWaitForRant(page);
   await expect.poll(async () => (await scoreState(page)).comboRemainingSeconds).toBeGreaterThan(0);
 
+  await page.waitForTimeout(500);
+  await clearAndSpawnNPC(page, 'office_worker', 1260);
+  await page.keyboard.press('Space');
+  await expect.poll(async () => (await projectileSystem(page)).projectiles.length).toBeGreaterThan(0);
+
   await page.keyboard.press('Escape');
   await expect.poll(async () => (await levelSession(page)).phase).toBe('paused');
   const pausedSnapshot = await levelSession(page);
   const comboBeforePause = (await scoreState(page)).comboRemainingSeconds;
+  const npcsBeforePause = (await npcSpawner(page)).npcs;
+  const projectilesBeforePause = (await projectileSystem(page)).projectiles;
+  const alertBeforePause = await alertState(page);
   await page.waitForTimeout(800);
   expect((await levelSession(page)).remainingSeconds).toBe(pausedSnapshot.remainingSeconds);
   expect((await scoreState(page)).comboRemainingSeconds).toBe(comboBeforePause);
+  expect((await npcSpawner(page)).npcs).toEqual(npcsBeforePause);
+  expect((await projectileSystem(page)).projectiles).toEqual(projectilesBeforePause);
+  expect(await alertState(page)).toEqual(alertBeforePause);
   await page.keyboard.press('Escape');
   await expect.poll(async () => (await levelSession(page)).phase).toBe('running');
 
@@ -728,6 +739,16 @@ test('phase 12 runs Level 1 through pause, timeout result, and deterministic cle
     type: firstSpawn.definitionId,
     lane: firstSpawn.laneId
   });
+
+  const inputListenersBeforeMenuCycle = await inputListenerCount(page);
+  const eventListenersBeforeMenuCycle = await eventBusListenerCounts(page);
+  await clickReturnToMenu(page, canvas);
+  await expect.poll(() => activeScenes(page)).toContain('MenuScene');
+  await expect.poll(() => hasStaleGameDebugState(page)).toBe(false);
+  await clickMenuStart(page, canvas);
+  await expect.poll(() => activeScenes(page)).toContain('GameScene');
+  expect(await inputListenerCount(page)).toBe(inputListenersBeforeMenuCycle);
+  expect(await eventBusListenerCounts(page)).toEqual(eventListenersBeforeMenuCycle);
 });
 
 test('phase 12 settles Level 1 success once from legal normal-poop scoring', async ({ page }) => {
@@ -893,6 +914,8 @@ type ProjectileDebugState = {
   id: number;
   poopType: string;
   initialVelocityX: number;
+  ageSeconds: number;
+  position: { readonly x: number; readonly y: number };
   bounceCount: number;
   generation: number;
   parentId?: number;
@@ -915,6 +938,8 @@ async function projectileSystem(page: Page): Promise<{
         id: projectile.id,
         poopType: projectile.poopType,
         initialVelocityX: projectile.trajectory.initialVelocity.x,
+        ageSeconds: projectile.ageSeconds,
+        position: projectile.position,
         bounceCount: projectile.bounceCount,
         generation: projectile.generation,
         parentId: projectile.parentId

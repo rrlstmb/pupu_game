@@ -26,11 +26,13 @@ import { Depths } from '../domain/layout/Depth';
 import {
   createLevelSession,
   failLevelCaught,
+  spawnConfigForLevel,
   toggleLevelPause,
   updateLevelMetrics,
   updateLevelSession,
   type LevelSession
 } from '../domain/level/LevelDirector';
+import type { LevelDefinition } from '../domain/level/LevelDefinition';
 import { createWorldLayout, type Lane, type ParallaxLayer, type WorldLayout } from '../domain/layout/WorldLayout';
 import { createNPCSpawnerState, spawnNPCOfType, updateNPCSpawner } from '../domain/npc/NPCSpawner';
 import type { NPCSpawnerState, NPCSpawnConfig } from '../domain/npc/NPCModel';
@@ -76,13 +78,14 @@ import { AimAssist } from '../systems/projectile/AimAssist';
 import { PhaserProjectileSystem } from '../systems/projectile/PhaserProjectileSystem';
 
 export class GameScene extends Phaser.Scene {
+  private levelDefinition: LevelDefinition = LEVEL_01;
   private layout!: WorldLayout;
   private inputAdapter!: InputAdapter;
   private projectileSystem!: PhaserProjectileSystem;
   private aimAssist!: AimAssist;
   private npcSystem!: PhaserNPCSystem;
   private npcSpawnerState!: NPCSpawnerState;
-  private npcRng = new SeededRng(LEVEL_01.seed);
+  private npcRng = new SeededRng(this.levelDefinition.seed);
   private levelSession?: LevelSession;
   private hitTokens = new Set<string>();
   private readonly gameplayEvents: GameplayEvent[] = [];
@@ -106,9 +109,15 @@ export class GameScene extends Phaser.Scene {
     super(SceneKeys.Game);
   }
 
+  init(data?: { readonly levelDefinition?: LevelDefinition }): void {
+    if (data?.levelDefinition) {
+      this.levelDefinition = data.levelDefinition;
+    }
+  }
+
   create(): void {
     const attempt = (this.levelSession?.attempt ?? 0) + 1;
-    this.levelSession = createLevelSession(LEVEL_01, attempt);
+    this.levelSession = createLevelSession(this.levelDefinition, attempt);
     const levelPoopDefinitions = this.levelPoopDefinitions();
     this.hitTokens = new Set<string>();
     this.gameplayEvents.length = 0;
@@ -475,21 +484,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   private levelPoopDefinitions() {
-    return POOP_DEFINITIONS.filter((definition) => LEVEL_01.availablePoopTypes.includes(definition.id));
+    return POOP_DEFINITIONS.filter((definition) => this.levelDefinition.availablePoopTypes.includes(definition.id));
   }
 
   private levelSpawnConfig(): NPCSpawnConfig {
-    return {
-      seed: LEVEL_01.seed,
-      ...LEVEL_01.spawn
-    };
+    return spawnConfigForLevel(this.levelDefinition);
   }
 
   private shouldShowAimAssist(isAimHeld: boolean): boolean {
-    if (!this.projectileConfig.aimAssistEnabled || LEVEL_01.aimAssist === 'disabled') {
+    if (!this.projectileConfig.aimAssistEnabled || this.levelDefinition.aimAssist === 'disabled') {
       return false;
     }
-    return LEVEL_01.aimAssist === 'always' || isAimHeld;
+    return this.levelDefinition.aimAssist === 'always' || isAimHeld;
   }
 
   private updateAimAssistForLevel(): void {

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { LEVEL_01 } from '../data/levels/level01';
 import { eventBus } from '../runtime/EventBus';
 import { GameEvents } from '../runtime/GameEvents';
 import { GAME_CONFIG } from '../runtime/GameConfig';
@@ -62,6 +63,6 @@ export class MenuScene extends Phaser.Scene {
 
   private startGame(): void {
     eventBus.emit(GameEvents.StartGame, undefined);
-    this.scene.start(SceneKeys.Game);
+    this.scene.start(SceneKeys.Game, { levelDefinition: LEVEL_01 });
   }
 }
