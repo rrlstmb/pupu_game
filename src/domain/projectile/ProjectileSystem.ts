@@ -1,6 +1,11 @@
 import type { ProjectileConfig } from '../../data/projectileConfig';
 import type { PoopType, ProjectilePoopRules, SurfaceTag } from '../poop/PoopModel';
-import { positionAt, type TrajectoryInput, type TrajectoryPoint, type Vector2 } from './ProjectileTrajectory';
+import {
+  trajectoryStateAt,
+  type TrajectoryInput,
+  type TrajectoryPoint,
+  type Vector2
+} from './ProjectileTrajectory';
 
 export type ProjectileStatus = 'active' | 'landed' | 'expired';
 
@@ -26,6 +31,8 @@ export type Projectile = {
   readonly ageSeconds: number;
   readonly previousPosition: TrajectoryPoint;
   readonly position: TrajectoryPoint;
+  readonly previousVisualPosition: TrajectoryPoint;
+  readonly visualPosition: TrajectoryPoint;
   readonly status: ProjectileStatus;
   readonly landedAt?: TrajectoryPoint;
 };
@@ -78,11 +85,18 @@ export function fireProjectile(
   }
 
   const trajectory: TrajectoryInput = {
-    origin,
+    origin: { x: origin.x, y: config.startProjectionY },
     initialVelocity: config.initialVelocity,
     gravity: config.gravity,
-    windAccelerationX: config.windAccelerationX
+    windAccelerationX: config.windAccelerationX,
+    startProjectionY: config.startProjectionY,
+    targetProjectionY: config.targetProjectionY,
+    apexHeight: config.apexHeight,
+    travelDuration: config.travelDuration,
+    windAffectX: config.windAffectX,
+    windAffectY: config.windAffectY
   };
+  const initial = trajectoryStateAt(trajectory, 0);
   const projectile: Projectile = {
     id: state.nextId,
     poopType,
@@ -93,8 +107,10 @@ export function fireProjectile(
     hasSplit: false,
     trajectory,
     ageSeconds: 0,
-    previousPosition: positionAt(trajectory, 0),
-    position: positionAt(trajectory, 0),
+    previousPosition: initial.groundProjection,
+    position: initial.groundProjection,
+    previousVisualPosition: initial.visualPosition,
+    visualPosition: initial.visualPosition,
     status: 'active'
   };
 
@@ -129,8 +145,12 @@ export function updateProjectileSystem(
     }
 
     const ageSeconds = projectile.ageSeconds + safeDelta;
-    const previousPosition = positionAt(projectile.trajectory, projectile.ageSeconds);
-    const position = positionAt(projectile.trajectory, ageSeconds);
+    const previous = trajectoryStateAt(projectile.trajectory, projectile.ageSeconds);
+    const current = trajectoryStateAt(projectile.trajectory, ageSeconds);
+    const previousPosition = previous.groundProjection;
+    const position = current.groundProjection;
+    const previousVisualPosition = previous.visualPosition;
+    const visualPosition = current.visualPosition;
     const splitAt = projectile.rules.splitAtSeconds;
     if (
       splitAt !== undefined &&
@@ -139,7 +159,7 @@ export function updateProjectileSystem(
       projectile.ageSeconds < splitAt &&
       ageSeconds >= splitAt
     ) {
-      const splitPosition = positionAt(projectile.trajectory, splitAt);
+      const splitPosition = trajectoryStateAt(projectile.trajectory, splitAt).groundProjection;
       const childCount = Math.max(0, projectile.rules.splitProjectileCount);
       const center = (childCount - 1) / 2;
       const availableSlots = Math.max(
@@ -157,8 +177,15 @@ export function updateProjectileSystem(
             y: projectile.trajectory.initialVelocity.y * 0.58
           },
           gravity: projectile.trajectory.gravity,
-          windAccelerationX: projectile.trajectory.windAccelerationX
+          windAccelerationX: projectile.trajectory.windAccelerationX,
+          startProjectionY: splitPosition.y,
+          targetProjectionY: projectile.trajectory.targetProjectionY,
+          apexHeight: projectile.trajectory.apexHeight * 0.45,
+          travelDuration: Math.max(0.2, projectile.trajectory.travelDuration - splitAt),
+          windAffectX: projectile.trajectory.windAffectX,
+          windAffectY: projectile.trajectory.windAffectY
         };
+        const childInitial = trajectoryStateAt(childTrajectory, 0);
         const child: Projectile = {
           ...projectile,
           id: nextId,
@@ -168,8 +195,10 @@ export function updateProjectileSystem(
           hasSplit: true,
           trajectory: childTrajectory,
           ageSeconds: 0,
-          previousPosition: positionAt(childTrajectory, 0),
-          position: positionAt(childTrajectory, 0),
+          previousPosition: childInitial.groundProjection,
+          position: childInitial.groundProjection,
+          previousVisualPosition: childInitial.visualPosition,
+          visualPosition: childInitial.visualPosition,
           status: 'active'
         };
         spawned.push(child);
@@ -178,22 +207,27 @@ export function updateProjectileSystem(
       }
       splitSpawnedCount += spawnCount;
 
-      recycled.push({ ...projectile, ageSeconds, previousPosition, position, status: 'expired', hasSplit: true });
+      recycled.push({
+        ...projectile,
+        ageSeconds,
+        previousPosition,
+        position,
+        previousVisualPosition,
+        visualPosition,
+        status: 'expired',
+        hasSplit: true
+      });
       continue;
     }
 
-    const crossedSurface = surfaces.find(
-      (surface) =>
-        ((previousPosition.y < surface.y && position.y >= surface.y) ||
-          (projectile.ageSeconds === 0 && previousPosition.y >= surface.y && projectile.trajectory.initialVelocity.y >= 0)) &&
-        projectile.rules.bounceSurfaceTags.includes(surface.tag)
-    );
+    const completedProjection = ageSeconds >= projectile.trajectory.travelDuration;
+    const crossedSurface = completedProjection
+      ? surfaces.find((surface) => projectile.rules.bounceSurfaceTags.includes(surface.tag))
+      : undefined;
 
     if (crossedSurface && projectile.bounceCount < projectile.rules.maxBounces) {
-      const segmentDy = position.y - previousPosition.y;
-      const ratio = segmentDy === 0 ? 0 : (crossedSurface.y - previousPosition.y) / segmentDy;
-      const bounceTime = projectile.ageSeconds + (ageSeconds - projectile.ageSeconds) * ratio;
-      const bouncePosition = { ...positionAt(projectile.trajectory, bounceTime), y: crossedSurface.y };
+      const bounceTime = projectile.trajectory.travelDuration;
+      const bouncePosition = trajectoryStateAt(projectile.trajectory, bounceTime).groundProjection;
       const incomingVelocity = {
         x: projectile.trajectory.initialVelocity.x + projectile.trajectory.windAccelerationX * bounceTime,
         y: projectile.trajectory.initialVelocity.y + projectile.trajectory.gravity * bounceTime
@@ -205,33 +239,44 @@ export function updateProjectileSystem(
           y: -Math.abs(incomingVelocity.y) * projectile.rules.bounceRestitution
         },
         gravity: projectile.trajectory.gravity,
-        windAccelerationX: projectile.trajectory.windAccelerationX
+        windAccelerationX: projectile.trajectory.windAccelerationX,
+        startProjectionY: bouncePosition.y,
+        targetProjectionY: bouncePosition.y,
+        apexHeight: projectile.trajectory.apexHeight * projectile.rules.bounceRestitution,
+        travelDuration: projectile.trajectory.travelDuration * projectile.rules.bounceRestitution,
+        windAffectX: projectile.trajectory.windAffectX,
+        windAffectY: projectile.trajectory.windAffectY
       };
+      const bounceInitial = trajectoryStateAt(trajectory, 0);
       projectiles.push({
         ...projectile,
         trajectory,
         ageSeconds: 0,
-        previousPosition: positionAt(trajectory, 0),
-        position: positionAt(trajectory, 0),
+        previousPosition: bounceInitial.groundProjection,
+        position: bounceInitial.groundProjection,
+        previousVisualPosition: bounceInitial.visualPosition,
+        visualPosition: bounceInitial.visualPosition,
         bounceCount: projectile.bounceCount + 1
       });
       bouncedCount += 1;
       continue;
     }
 
-    const crossesLandingPlane =
-      (previousPosition.y < groundY && position.y >= groundY) ||
-      (projectile.ageSeconds === 0 && previousPosition.y >= groundY && projectile.trajectory.initialVelocity.y >= 0);
-
-    if (crossesLandingPlane) {
-      const segmentDy = position.y - previousPosition.y;
-      const ratio = segmentDy === 0 ? 0 : (groundY - previousPosition.y) / segmentDy;
-      const landingTime = projectile.ageSeconds + (ageSeconds - projectile.ageSeconds) * ratio;
-      const landingPosition = { ...positionAt(projectile.trajectory, landingTime), y: groundY };
+    if (completedProjection) {
+      const landingPosition = trajectoryStateAt(
+        projectile.trajectory,
+        projectile.trajectory.travelDuration
+      ).groundProjection;
       const landedProjectile: Projectile = {
         ...projectile,
         ageSeconds,
+        previousPosition,
         position: landingPosition,
+        previousVisualPosition,
+        visualPosition: trajectoryStateAt(
+          projectile.trajectory,
+          projectile.trajectory.travelDuration
+        ).visualPosition,
         status: 'landed',
         landedAt: landingPosition
       };
@@ -245,6 +290,8 @@ export function updateProjectileSystem(
         ...projectile,
         ageSeconds,
         position,
+        previousVisualPosition,
+        visualPosition,
         status: 'expired'
       };
       recycled.push(expiredProjectile);
@@ -255,7 +302,9 @@ export function updateProjectileSystem(
       ...projectile,
       ageSeconds,
       previousPosition,
-      position
+      position,
+      previousVisualPosition,
+      visualPosition
     });
   }
 

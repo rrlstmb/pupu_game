@@ -145,11 +145,19 @@ function projectileAt(poopType: Projectile['poopType'], bounceCount: number): Pr
       origin: { x: 500, y: 320 },
       initialVelocity: { x: 0, y: 0 },
       gravity: 0,
-      windAccelerationX: 0
+      windAccelerationX: 0,
+      startProjectionY: 320,
+      targetProjectionY: 320,
+      apexHeight: 100,
+      travelDuration: 1,
+      windAffectX: 0,
+      windAffectY: 0
     },
     ageSeconds: 0,
     previousPosition: { x: 500, y: 320, time: 0 },
     position: { x: 500, y: 320, time: 0 },
+    previousVisualPosition: { x: 500, y: 320, time: 0 },
+    visualPosition: { x: 500, y: 320, time: 0 },
     status: 'active'
   };
 }

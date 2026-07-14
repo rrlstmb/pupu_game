@@ -2,12 +2,11 @@ import type Phaser from 'phaser';
 import type { ProjectileConfig } from '../../data/projectileConfig';
 import { Depths } from '../../domain/layout/Depth';
 import {
-  predictLanding,
-  sampleTrajectory,
   type LandingPrediction,
   type TrajectoryInput,
   type Vector2
 } from '../../domain/projectile/ProjectileTrajectory';
+import { buildAimAssistPrediction } from '../../domain/projectile/AimAssistPrediction';
 
 export class AimAssist {
   private readonly graphics: Phaser.GameObjects.Graphics;
@@ -23,24 +22,36 @@ export class AimAssist {
     this.graphics.setVisible(visible);
   }
 
-  update(input: TrajectoryInput, groundY: number, config: ProjectileConfig, actualLandingError?: number): void {
+  update(input: TrajectoryInput, _groundY: number, config: ProjectileConfig, actualLandingError?: number): void {
     this.graphics.clear();
-    this.lastLanding = predictLanding(input, groundY, config.predictionStepSeconds, config.predictionMaxSeconds);
+    const prediction = buildAimAssistPrediction(input, config);
+    this.lastLanding = { point: prediction.collisionPoint, landed: true };
 
     if (!this.visible || !config.aimAssistEnabled) {
       return;
     }
 
-    const points = sampleTrajectory(input, config.predictionStepSeconds, config.predictionMaxSeconds).filter(
-      (point) => point.y <= groundY
-    );
-
     this.graphics.lineStyle(3, 0xa7f3d0, 0.86);
-    for (let index = 1; index < points.length; index += 1) {
-      const previous = points[index - 1];
-      const current = points[index];
+    for (let index = 1; index < prediction.visualPath.length; index += 1) {
+      const previous = prediction.visualPath[index - 1];
+      const current = prediction.visualPath[index];
       this.graphics.lineBetween(previous.x, previous.y, current.x, current.y);
     }
+
+    this.graphics.lineStyle(2, 0x38bdf8, 0.82);
+    for (let index = 1; index < prediction.groundProjectionPath.length; index += 1) {
+      const previous = prediction.groundProjectionPath[index - 1];
+      const current = prediction.groundProjectionPath[index];
+      this.graphics.lineBetween(previous.x, previous.y, current.x, current.y);
+    }
+
+    this.graphics.lineStyle(2, 0xfacc15, 0.65);
+    this.graphics.strokeRect(
+      0,
+      prediction.topLaneReach.minY,
+      1280,
+      prediction.topLaneReach.maxY - prediction.topLaneReach.minY
+    );
 
     if (this.lastLanding.landed) {
       this.graphics.lineStyle(2, 0xffffff, 0.9);

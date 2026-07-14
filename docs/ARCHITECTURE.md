@@ -141,6 +141,11 @@ Depth constants live in `src/domain/layout/Depth.ts`.
 ## Projectile Rules
 
 - Projectile coordinates use the canonical world pixel coordinate system.
+- Projectile motion has two coordinates from one normalized trajectory progress: `groundProjection` is the authoritative collision/landing position, while `visualPosition` subtracts a data-driven parabolic height and is presentation-only.
+- Hit detection reads consecutive ground-projection segments and the data-driven collision radius; it must never read the visual sprite Y coordinate.
+- Debug-only trajectory diagnostics may sample ground and visual paths from the same pure trajectory functions; production play does not render trajectory or landing helper lines.
+- Normal throws use a pure charge state: Space press starts charging, game-time hold updates power, and release selects the data-driven target Y, apex, and travel duration before firing.
+- Charge changes projection depth only. With no wind, normal-projectile X remains the player's release X while the player continues to move horizontally.
 - Velocity is pixels per second.
 - Gravity and wind acceleration are pixels per second squared.
 - Pure trajectory prediction lives in `src/domain/projectile/ProjectileTrajectory.ts`.

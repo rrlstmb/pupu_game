@@ -107,11 +107,19 @@ function projectileAt(id: number, poopType: PoopType, x: number, y: number): Pro
       origin: { x, y },
       initialVelocity: { x: 0, y: 0 },
       gravity: 0,
-      windAccelerationX: 0
+      windAccelerationX: 0,
+      startProjectionY: y,
+      targetProjectionY: y,
+      apexHeight: 100,
+      travelDuration: 1,
+      windAffectX: 0,
+      windAffectY: 0
     },
     ageSeconds: 0,
     previousPosition: { x, y, time: 0 },
     position: { x, y, time: 0 },
+    previousVisualPosition: { x, y, time: 0 },
+    visualPosition: { x, y, time: 0 },
     status: 'active'
   };
 }

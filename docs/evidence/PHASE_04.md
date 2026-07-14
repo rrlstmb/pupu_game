@@ -100,3 +100,14 @@ These are stored in `tests/unit/ProjectileTrajectory.test.ts`.
 - Wind debug is keyboard-only and intended for development.
 - Vite/Playwright local server still requires escalated localhost permission in this sandbox.
 - Build reports a large Phaser bundle chunk warning inherited from prior phases.
+
+## Post-Gate C Targeted Fix
+
+- Ground projection and visual arc were separated after manual Gate C review exposed unreliable top-lane collision.
+- Current evidence and regression commands: `docs/evidence/PHASE_04_GROUND_PROJECTION_FIX.md`.
+
+## Charged Y-Axis Throw Patch
+
+- A subsequent manual review replaced press-to-fire diagonal throws with Space hold/release charging along the player's X.
+- Production trajectory helpers are disabled; a bottom-center charge meter communicates depth power.
+- Evidence and Gate C regression commands: `docs/evidence/PHASE_04_CHARGED_THROW_FIX.md`.

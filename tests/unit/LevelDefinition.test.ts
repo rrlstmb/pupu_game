@@ -10,7 +10,7 @@ describe('LevelDefinition runtime schema', () => {
       durationSeconds: 90,
       targetScore: 500,
       availablePoopTypes: ['normal_poop'],
-      aimAssist: 'always'
+      aimAssist: 'disabled'
     });
     expect(LEVEL_01.spawn.definitions).toEqual([{ npcType: 'office_worker', weight: 1 }]);
   });

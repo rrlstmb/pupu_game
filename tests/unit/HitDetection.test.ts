@@ -100,6 +100,19 @@ describe('HitDetection and rant loop', () => {
 
     expect([...removeHitTokensForProjectiles(tokens, [10, 11])]).toEqual(['12:3:1:normal_poop']);
   });
+
+  it.each([
+    ['top', 250],
+    ['middle', 358],
+    ['bottom', 463]
+  ])('hits a %s lane NPC using ground projection while visual Y is high', (_lane, laneY) => {
+    const npc = { ...npcAt(1, 600, 'Walking'), y: laneY };
+    const projectile = projectileAt(10, 600, laneY, laneY - 220);
+    const result = resolveProjectileNPCHits([projectile], [npc], NPC_DEFINITIONS, new Set(), POOP_DEFINITIONS);
+
+    expect(projectile.visualPosition.y).not.toBe(projectile.position.y);
+    expect(result.npcs[0]).toMatchObject({ state: 'Hit', validHitCount: 1 });
+  });
 });
 
 function npcAt(id: number, x: number, state: NPCInstanceState['state']): NPCInstanceState {
@@ -130,7 +143,7 @@ function npcAt(id: number, x: number, state: NPCInstanceState['state']): NPCInst
   };
 }
 
-function projectileAt(id: number, x: number, y: number): Projectile {
+function projectileAt(id: number, x: number, y: number, visualY = y): Projectile {
   return {
     id,
     poopType: 'normal_poop',
@@ -143,11 +156,19 @@ function projectileAt(id: number, x: number, y: number): Projectile {
       origin: { x, y },
       initialVelocity: { x: 0, y: 0 },
       gravity: 0,
-      windAccelerationX: 0
+      windAccelerationX: 0,
+      startProjectionY: y,
+      targetProjectionY: y,
+      apexHeight: 100,
+      travelDuration: 1,
+      windAffectX: 0,
+      windAffectY: 0
     },
     ageSeconds: 0,
     previousPosition: { x, y, time: 0 },
     position: { x, y, time: 0 },
+    previousVisualPosition: { x, y: visualY, time: 0 },
+    visualPosition: { x, y: visualY, time: 0 },
     status: 'active'
   };
 }

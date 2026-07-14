@@ -4,7 +4,12 @@ import { NPC_DEFINITIONS, NPC_SPAWN_CONFIG } from '../data/npcDefinitions';
 import { LEVEL_01 } from '../data/levels/level01';
 import { POOP_DEFINITIONS, poopDefinitionById } from '../data/poopDefinitions';
 import { PLAYER_MOVEMENT_CONFIG } from '../data/playerMovement';
-import { NORMAL_POOP_PROJECTILE_CONFIG, THROW_WORLD_CONFIG, type ProjectileConfig } from '../data/projectileConfig';
+import {
+  NORMAL_POOP_PROJECTILE_CONFIG,
+  THROW_CHARGE_CONFIG,
+  THROW_WORLD_CONFIG,
+  type ProjectileConfig
+} from '../data/projectileConfig';
 import { SCORE_RULES } from '../data/scoreRules';
 import {
   applyAlertDelta,
@@ -58,6 +63,13 @@ import {
 } from '../domain/poop/PoopInventory';
 import { projectileRulesFor } from '../domain/poop/PoopBehaviorStrategy';
 import type { Projectile } from '../domain/projectile/ProjectileSystem';
+import {
+  cancelCharge,
+  chargedProjectileConfig,
+  createChargeState,
+  updateCharge,
+  type ChargeState
+} from '../domain/projectile/ChargeSystem';
 import type { TrajectoryInput, Vector2 } from '../domain/projectile/ProjectileTrajectory';
 import { SeededRng } from '../domain/random/SeededRng';
 import {
@@ -76,6 +88,7 @@ import { InputAdapter } from '../systems/input/InputAdapter';
 import { PhaserNPCSystem } from '../systems/npc/PhaserNPCSystem';
 import { AimAssist } from '../systems/projectile/AimAssist';
 import { PhaserProjectileSystem } from '../systems/projectile/PhaserProjectileSystem';
+import { PhaserChargeMeter } from '../systems/projectile/PhaserChargeMeter';
 
 export class GameScene extends Phaser.Scene {
   private levelDefinition: LevelDefinition = LEVEL_01;
@@ -83,6 +96,7 @@ export class GameScene extends Phaser.Scene {
   private inputAdapter!: InputAdapter;
   private projectileSystem!: PhaserProjectileSystem;
   private aimAssist!: AimAssist;
+  private chargeMeter!: PhaserChargeMeter;
   private npcSystem!: PhaserNPCSystem;
   private npcSpawnerState!: NPCSpawnerState;
   private npcRng = new SeededRng(this.levelDefinition.seed);
@@ -94,6 +108,7 @@ export class GameScene extends Phaser.Scene {
   private poopInventory: PoopInventoryState = createPoopInventory(POOP_DEFINITIONS);
   private environmentalEffects: EnvironmentalEffectState = createEnvironmentalEffectState();
   private projectileConfig: ProjectileConfig = NORMAL_POOP_PROJECTILE_CONFIG;
+  private chargeState: ChargeState = createChargeState();
   private isGameOver = false;
   private playerState!: PlayerState;
   private playerAvatar?: Phaser.GameObjects.Container;
@@ -125,6 +140,7 @@ export class GameScene extends Phaser.Scene {
     this.poopInventory = createPoopInventory(levelPoopDefinitions);
     this.environmentalEffects = createEnvironmentalEffectState();
     this.projectileConfig = NORMAL_POOP_PROJECTILE_CONFIG;
+    this.chargeState = createChargeState();
     this.npcRng = new SeededRng(this.levelSession.definition.seed);
     this.isGameOver = false;
     this.scrollingLayers.length = 0;
@@ -134,6 +150,7 @@ export class GameScene extends Phaser.Scene {
     this.alertState = createAlertState(this.playerState.x);
     this.projectileSystem = new PhaserProjectileSystem(this, this.projectileGroundY(), this.projectileConfig);
     this.aimAssist = new AimAssist(this);
+    this.chargeMeter = new PhaserChargeMeter(this, THROW_CHARGE_CONFIG);
     this.npcSystem = new PhaserNPCSystem(this, NPC_DEFINITIONS);
     this.npcSpawnerState = createNPCSpawnerState();
     emitSceneReady(this);
@@ -195,6 +212,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       event.preventDefault();
+      this.resetCharge();
       this.levelSession = toggleLevelPause(this.levelSession);
       eventBus.emit(GameEvents.LevelUpdated, this.levelSession);
     };
@@ -237,6 +255,7 @@ export class GameScene extends Phaser.Scene {
       this.inputAdapter.dispose();
       this.projectileSystem.dispose();
       this.aimAssist.dispose();
+      this.chargeMeter.dispose();
       this.npcSystem.dispose();
       this.scrollingLayers.length = 0;
       this.debugOverlay?.destroy(true);
@@ -261,6 +280,7 @@ export class GameScene extends Phaser.Scene {
       this.isGameOver = true;
     }
     if (this.isGameOver || this.levelSession.phase === 'paused' || this.levelSession.phase === 'countdown') {
+      this.resetCharge();
       this.updateAimAssistForLevel();
       this.emitRuntimeState();
       this.inputAdapter.endFrame();
@@ -286,7 +306,7 @@ export class GameScene extends Phaser.Scene {
         deltaSeconds,
         playerX: this.playerState.x,
         isInCover: this.isPlayerInCover(),
-        isThrowing: input.throw.pressed
+        isThrowing: input.throw.held
       },
       ALERT_RULES
     );
@@ -339,23 +359,46 @@ export class GameScene extends Phaser.Scene {
       windAccelerationX: this.projectileConfig.windAccelerationX
     };
     this.projectileSystem.setConfig(this.projectileConfig);
-    const trajectory = this.currentThrowTrajectory();
-    this.aimAssist.setVisible(this.shouldShowAimAssist(input.aim.held));
+    this.projectileSystem.setDebugVisible(this.debugOverlayVisible);
+    const chargeUpdate = updateCharge(
+      this.chargeState,
+      input.throw,
+      deltaSeconds,
+      canUseSelectedPoop(this.poopInventory),
+      THROW_CHARGE_CONFIG
+    );
+    this.chargeState = chargeUpdate.state;
+    this.chargeMeter.sync(this.chargeState);
+    const previewPower = Math.max(THROW_CHARGE_CONFIG.minThrowPower, this.chargeState.chargePower);
+    const previewConfig = chargedProjectileConfig(
+      this.projectileConfig,
+      previewPower,
+      THROW_CHARGE_CONFIG,
+      true
+    );
+    const trajectory = this.currentThrowTrajectory(previewConfig);
+    this.aimAssist.setVisible(this.shouldShowAimAssist());
     this.aimAssist.update(
       trajectory,
       this.projectileGroundY(),
-      this.projectileConfig,
+      previewConfig,
       this.projectileSystem.getActualLandingError()
     );
 
-    if (input.throw.pressed && canUseSelectedPoop(this.poopInventory)) {
+    if (chargeUpdate.releasedThrowPower !== undefined && canUseSelectedPoop(this.poopInventory)) {
       this.alertState = recordThrow(this.alertState, ALERT_RULES);
       if (this.stopFrameIfCaught()) {
         return;
       }
+      const chargedConfig = chargedProjectileConfig(
+        this.projectileConfig,
+        chargeUpdate.releasedThrowPower,
+        THROW_CHARGE_CONFIG,
+        true
+      );
       const fired = this.projectileSystem.fire(
         trajectory.origin,
-        this.projectileConfig,
+        chargedConfig,
         selectedDefinition.id,
         projectileRulesFor(selectedDefinition)
       );
@@ -422,6 +465,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private returnToMenu(): void {
+    this.resetCharge();
     eventBus.emit(GameEvents.ReturnToMenu, undefined);
     this.scene.start(SceneKeys.Menu);
   }
@@ -491,20 +535,23 @@ export class GameScene extends Phaser.Scene {
     return spawnConfigForLevel(this.levelDefinition);
   }
 
-  private shouldShowAimAssist(isAimHeld: boolean): boolean {
-    if (!this.projectileConfig.aimAssistEnabled || this.levelDefinition.aimAssist === 'disabled') {
-      return false;
-    }
-    return this.levelDefinition.aimAssist === 'always' || isAimHeld;
+  private shouldShowAimAssist(): boolean {
+    return this.debugOverlayVisible && THROW_CHARGE_CONFIG.allowDebugTrajectoryOverlay;
   }
 
   private updateAimAssistForLevel(): void {
-    const trajectory = this.currentThrowTrajectory();
-    this.aimAssist.setVisible(this.shouldShowAimAssist(false));
+    const previewConfig = chargedProjectileConfig(
+      this.projectileConfig,
+      THROW_CHARGE_CONFIG.minThrowPower,
+      THROW_CHARGE_CONFIG,
+      true
+    );
+    const trajectory = this.currentThrowTrajectory(previewConfig);
+    this.aimAssist.setVisible(this.shouldShowAimAssist());
     this.aimAssist.update(
       trajectory,
       this.projectileGroundY(),
-      this.projectileConfig,
+      previewConfig,
       this.projectileSystem.getActualLandingError()
     );
   }
@@ -756,18 +803,24 @@ export class GameScene extends Phaser.Scene {
     return this.layout.rooftop.playerBaselineY;
   }
 
-  private currentThrowTrajectory(): TrajectoryInput {
+  private currentThrowTrajectory(config = this.projectileConfig): TrajectoryInput {
     return {
       origin: this.projectileOrigin(),
-      initialVelocity: this.projectileConfig.initialVelocity,
-      gravity: this.projectileConfig.gravity,
-      windAccelerationX: this.projectileConfig.windAccelerationX
+      initialVelocity: config.initialVelocity,
+      gravity: config.gravity,
+      windAccelerationX: config.windAccelerationX,
+      startProjectionY: config.startProjectionY,
+      targetProjectionY: config.targetProjectionY,
+      apexHeight: config.apexHeight,
+      travelDuration: config.travelDuration,
+      windAffectX: config.windAffectX,
+      windAffectY: config.windAffectY
     };
   }
 
   private projectileOrigin(): Vector2 {
     return {
-      x: this.playerState.x + PLAYER_MOVEMENT_CONFIG.width * THROW_WORLD_CONFIG.originOffsetPlayerWidthRatio,
+      x: this.playerState.x,
       y: this.layout.rooftop.y + THROW_WORLD_CONFIG.originOffsetY
     };
   }
@@ -785,6 +838,11 @@ export class GameScene extends Phaser.Scene {
       )
     };
     this.projectileSystem.setConfig(this.projectileConfig);
+  }
+
+  private resetCharge(): void {
+    this.chargeState = cancelCharge();
+    this.chargeMeter?.sync(this.chargeState);
   }
 
   private renderDebugOverlay(layout: WorldLayout): void {
@@ -882,6 +940,8 @@ export class GameScene extends Phaser.Scene {
     window.__SHIMING_BIDA_DEBUG__.landingError = this.projectileSystem.getActualLandingError();
     window.__SHIMING_BIDA_DEBUG__.windAccelerationX = this.projectileConfig.windAccelerationX;
     window.__SHIMING_BIDA_DEBUG__.aimAssistVisible = this.aimAssist.isVisible();
+    window.__SHIMING_BIDA_DEBUG__.chargeState = this.chargeState;
+    window.__SHIMING_BIDA_DEBUG__.chargeMeterVisible = this.chargeMeter.isVisible();
     window.__SHIMING_BIDA_DEBUG__.inputListenerCount = this.inputAdapter.getBoundListenerCount();
     window.__SHIMING_BIDA_DEBUG__.debugOverlayVisible = this.debugOverlayVisible;
     window.__SHIMING_BIDA_DEBUG__.levelSession = this.levelSession;
@@ -896,7 +956,7 @@ export class GameScene extends Phaser.Scene {
       this.emitRuntimeState();
       this.setDebugState();
     };
-    window.__SHIMING_BIDA_DEBUG__.spawnNPCSandbox = (npcType: string, x?: number) => {
+    window.__SHIMING_BIDA_DEBUG__.spawnNPCSandbox = (npcType: string, x?: number, laneId?: Lane['id']) => {
       const definition = NPC_DEFINITIONS.find((candidate) => candidate.id === npcType);
       if (!definition) {
         return;
@@ -909,13 +969,15 @@ export class GameScene extends Phaser.Scene {
         this.layout.width,
         NPC_SPAWN_CONFIG.spawnXPadding,
         this.npcRng,
-        x
+        x,
+        laneId
       );
     };
-    window.__SHIMING_BIDA_DEBUG__.clearNPCSandbox = () => {
+    window.__SHIMING_BIDA_DEBUG__.clearNPCSandbox = (disableAutoSpawn = false) => {
       this.npcSpawnerState = {
         ...this.npcSpawnerState,
-        npcs: []
+        npcs: [],
+        timeUntilNextSpawn: disableAutoSpawn ? Number.POSITIVE_INFINITY : this.npcSpawnerState.timeUntilNextSpawn
       };
     };
   }
@@ -947,6 +1009,8 @@ export class GameScene extends Phaser.Scene {
     delete debug.landingError;
     delete debug.windAccelerationX;
     delete debug.aimAssistVisible;
+    delete debug.chargeState;
+    delete debug.chargeMeterVisible;
     delete debug.inputListenerCount;
     delete debug.debugOverlayVisible;
     delete debug.levelSession;

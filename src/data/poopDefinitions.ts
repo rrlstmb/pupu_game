@@ -23,7 +23,8 @@ export const POOP_DEFINITIONS: readonly PoopDefinition[] = [
       ...NORMAL_POOP_PROJECTILE_CONFIG,
       initialVelocity: { x: 330, y: -590 },
       cooldownSeconds: 0.7,
-      radius: 12
+      radius: 12,
+      collisionRadius: 12
     },
     initialStock: 4,
     scoreMultiplier: 0.95,
@@ -41,7 +42,8 @@ export const POOP_DEFINITIONS: readonly PoopDefinition[] = [
       ...NORMAL_POOP_PROJECTILE_CONFIG,
       initialVelocity: { x: 350, y: -610 },
       cooldownSeconds: 0.9,
-      radius: 10
+      radius: 10,
+      collisionRadius: 10
     },
     initialStock: 3,
     scoreMultiplier: 0.8,
@@ -60,7 +62,8 @@ export const POOP_DEFINITIONS: readonly PoopDefinition[] = [
       initialVelocity: { x: 250, y: -520 },
       gravity: 1120,
       cooldownSeconds: 1.4,
-      radius: 18
+      radius: 18,
+      collisionRadius: 18
     },
     initialStock: 2,
     scoreMultiplier: 1.2,
@@ -78,7 +81,8 @@ export const POOP_DEFINITIONS: readonly PoopDefinition[] = [
       ...NORMAL_POOP_PROJECTILE_CONFIG,
       initialVelocity: { x: 390, y: -560 },
       cooldownSeconds: 1.0,
-      radius: 10
+      radius: 10,
+      collisionRadius: 10
     },
     initialStock: 3,
     scoreMultiplier: 0.9,
@@ -101,7 +105,8 @@ export const POOP_DEFINITIONS: readonly PoopDefinition[] = [
       ...NORMAL_POOP_PROJECTILE_CONFIG,
       initialVelocity: { x: 300, y: -540 },
       cooldownSeconds: 1.2,
-      radius: 11
+      radius: 11,
+      collisionRadius: 11
     },
     initialStock: 2,
     scoreMultiplier: 0.7,
@@ -126,6 +131,7 @@ export const POOP_DEFINITIONS: readonly PoopDefinition[] = [
       initialVelocity: { x: 340, y: -650 },
       cooldownSeconds: 1.3,
       radius: 8,
+      collisionRadius: 8,
       maxActiveProjectiles: 12
     },
     initialStock: 2,
@@ -150,7 +156,8 @@ export const POOP_DEFINITIONS: readonly PoopDefinition[] = [
       ...NORMAL_POOP_PROJECTILE_CONFIG,
       initialVelocity: { x: 360, y: -610 },
       cooldownSeconds: 1.6,
-      radius: 10
+      radius: 10,
+      collisionRadius: 10
     },
     initialStock: 1,
     scoreMultiplier: 2.1,

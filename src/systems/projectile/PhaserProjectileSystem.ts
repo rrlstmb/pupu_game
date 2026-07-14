@@ -16,6 +16,8 @@ import { emptyProjectileRules } from '../../domain/projectile/ProjectileSystem';
 type ProjectileView = {
   readonly body: Phaser.GameObjects.Arc;
   readonly vector: Phaser.GameObjects.Line;
+  readonly groundProjection: Phaser.GameObjects.Arc;
+  readonly collisionRadius: Phaser.GameObjects.Arc;
 };
 
 export type ProjectileViewPoolStats = {
@@ -35,6 +37,7 @@ export class PhaserProjectileSystem {
   private actualLandingError?: number;
   private lastNaturalRecycleCount = 0;
   private lastNaturalRecycled: Projectile[] = [];
+  private debugVisible = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -44,6 +47,15 @@ export class PhaserProjectileSystem {
 
   setConfig(config: ProjectileConfig): void {
     this.config = config;
+  }
+
+  setDebugVisible(visible: boolean): void {
+    this.debugVisible = visible;
+    for (const view of this.views.values()) {
+      view.vector.setVisible(visible);
+      view.groundProjection.setVisible(visible);
+      view.collisionRadius.setVisible(visible);
+    }
   }
 
   fire(
@@ -154,25 +166,38 @@ export class PhaserProjectileSystem {
 
     this.reusedViewCount += 1;
     view.body
-      .setPosition(projectile.position.x, projectile.position.y)
+      .setPosition(projectile.visualPosition.x, projectile.visualPosition.y)
       .setDisplaySize(projectile.config.radius * 2, projectile.config.radius * 2)
       .setFillStyle(colorForPoop(projectile.poopType), 1)
       .setActive(true)
       .setVisible(true);
-    view.vector.setActive(true).setVisible(true);
+    view.vector.setActive(true).setVisible(this.debugVisible);
+    view.groundProjection.setActive(true).setVisible(this.debugVisible);
+    view.collisionRadius.setActive(true).setVisible(this.debugVisible);
     return view;
   }
 
   private createView(projectile: Projectile): ProjectileView {
     const body = this.scene.add
-      .circle(projectile.position.x, projectile.position.y, projectile.config.radius, colorForPoop(projectile.poopType), 1)
+      .circle(projectile.visualPosition.x, projectile.visualPosition.y, projectile.config.radius, colorForPoop(projectile.poopType), 1)
       .setDepth(Depths.projectile);
     const vector = this.scene.add
-      .line(0, 0, projectile.position.x, projectile.position.y, projectile.position.x + 42, projectile.position.y, 0xffffff, 0.75)
+      .line(0, 0, projectile.visualPosition.x, projectile.visualPosition.y, projectile.position.x, projectile.position.y, 0xffffff, 0.75)
       .setOrigin(0, 0)
-      .setDepth(Depths.debug - 5);
+      .setDepth(Depths.debug - 5)
+      .setVisible(this.debugVisible);
+    const groundProjection = this.scene.add
+      .circle(projectile.position.x, projectile.position.y, 5, 0x38bdf8, 0.9)
+      .setDepth(Depths.debug - 4)
+      .setVisible(this.debugVisible);
+    const collisionRadius = this.scene.add
+      .circle(projectile.position.x, projectile.position.y, projectile.config.collisionRadius)
+      .setStrokeStyle(2, 0xfacc15, 0.9)
+      .setFillStyle(0x000000, 0)
+      .setDepth(Depths.debug - 3)
+      .setVisible(this.debugVisible);
 
-    return { body, vector };
+    return { body, vector, groundProjection, collisionRadius };
   }
 
   private syncView(projectile: Projectile): void {
@@ -181,19 +206,17 @@ export class PhaserProjectileSystem {
       return;
     }
 
-    const velocity = {
-      x: projectile.trajectory.initialVelocity.x + projectile.trajectory.windAccelerationX * projectile.ageSeconds,
-      y: projectile.trajectory.initialVelocity.y + projectile.trajectory.gravity * projectile.ageSeconds
-    };
-    const scale = 0.08;
-
-    view.body.setPosition(projectile.position.x, projectile.position.y);
+    view.body.setPosition(projectile.visualPosition.x, projectile.visualPosition.y);
     view.vector.setTo(
+      projectile.visualPosition.x,
+      projectile.visualPosition.y,
       projectile.position.x,
-      projectile.position.y,
-      projectile.position.x + velocity.x * scale,
-      projectile.position.y + velocity.y * scale
+      projectile.position.y
     );
+    view.groundProjection.setPosition(projectile.position.x, projectile.position.y);
+    view.collisionRadius
+      .setPosition(projectile.position.x, projectile.position.y)
+      .setRadius(projectile.config.collisionRadius);
   }
 
   private releaseView(id: number): void {
@@ -204,6 +227,8 @@ export class PhaserProjectileSystem {
 
     view.body.setActive(false).setVisible(false);
     view.vector.setActive(false).setVisible(false);
+    view.groundProjection.setActive(false).setVisible(false);
+    view.collisionRadius.setActive(false).setVisible(false);
     this.pooledViews.push(view);
     this.views.delete(id);
   }
@@ -211,6 +236,8 @@ export class PhaserProjectileSystem {
   private destroyView(view: ProjectileView): void {
     view.body.destroy();
     view.vector.destroy();
+    view.groundProjection.destroy();
+    view.collisionRadius.destroy();
   }
 }
 

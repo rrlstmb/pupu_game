@@ -13,9 +13,9 @@ Codex must not set any phase to `PASS`.
 
 ## Current Audit
 
-- Audit: Gate C - Vertical Slice
+- Audit: Prompt 04 targeted charged Y-axis throw patch after Gate C
 - Status: READY_FOR_REVIEW
-- Evidence: `docs/evidence/GATE_C.md`
+- Evidence: `docs/evidence/PHASE_04_CHARGED_THROW_FIX.md`
 - Prompt 13 remains `NOT_STARTED`.
 
 ## Audit History
@@ -24,6 +24,8 @@ Codex must not set any phase to `PASS`.
 - Retro Gate B - Core Loop MVP: `READY_FOR_REVIEW` on 2026-07-14; evidence at `docs/evidence/GATE_B_RETRO.md`.
 - Prompt 09-11 Post-Gate Regression: `READY_FOR_REVIEW` on 2026-07-14; evidence at `docs/evidence/PROMPT_09_11_REGRESSION.md`.
 - Gate C - Vertical Slice: `READY_FOR_REVIEW` on 2026-07-14; evidence at `docs/evidence/GATE_C.md`.
+- Prompt 04 Ground Projection Targeted Fix: `READY_FOR_REVIEW` on 2026-07-14; evidence at `docs/evidence/PHASE_04_GROUND_PROJECTION_FIX.md`.
+- Prompt 04 Charged Y-Axis Throw Targeted Patch: `READY_FOR_REVIEW` on 2026-07-14; evidence at `docs/evidence/PHASE_04_CHARGED_THROW_FIX.md`.
 
 ## Baseline
 

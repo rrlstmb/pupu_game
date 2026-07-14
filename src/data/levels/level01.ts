@@ -8,7 +8,7 @@ export const LEVEL_01 = loadLevelDefinition({
   targetScore: 500,
   seed: 'level-01-seed',
   availablePoopTypes: ['normal_poop'],
-  aimAssist: 'always',
+  aimAssist: 'disabled',
   spawn: {
     intervalSeconds: 1.15,
     spawnXPadding: 72,

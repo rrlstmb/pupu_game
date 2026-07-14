@@ -22,9 +22,10 @@ export function spawnNPCOfType(
   worldWidth: number,
   spawnXPadding: number,
   rng: Rng,
-  spawnX = worldWidth + spawnXPadding
+  spawnX = worldWidth + spawnXPadding,
+  laneId?: Lane['id']
 ): NPCSpawnerState {
-  const lane = lanes[Math.min(1, lanes.length - 1)];
+  const lane = laneId ? laneById(lanes, laneId) : lanes[Math.min(1, lanes.length - 1)];
   const definition = definitionById(definitions, npcType);
   return {
     ...state,

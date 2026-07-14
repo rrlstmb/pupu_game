@@ -1,85 +1,62 @@
 import { describe, expect, it } from 'vitest';
 import { NORMAL_POOP_PROJECTILE_CONFIG } from '../../src/data/projectileConfig';
-import { positionAt, predictLanding, sampleTrajectory, velocityAt } from '../../src/domain/projectile/ProjectileTrajectory';
+import {
+  groundProjectionAt,
+  predictLanding,
+  sampleGroundProjection,
+  sampleVisualTrajectory,
+  trajectoryStateAt,
+  visualPositionAt,
+  type TrajectoryInput
+} from '../../src/domain/projectile/ProjectileTrajectory';
 
-const goldenCases = [
-  {
-    name: 'normal zero wind',
-    input: { origin: { x: 640, y: 510 }, initialVelocity: { x: 360, y: -620 }, gravity: 980, windAccelerationX: 0 },
-    groundY: 720,
-    expectedX: 1195.5,
-    expectedTime: 1.5430
-  },
-  {
-    name: 'tail wind',
-    input: { origin: { x: 640, y: 510 }, initialVelocity: { x: 360, y: -620 }, gravity: 980, windAccelerationX: 120 },
-    groundY: 720,
-    expectedX: 1338.35,
-    expectedTime: 1.5430
-  },
-  {
-    name: 'head wind',
-    input: { origin: { x: 640, y: 510 }, initialVelocity: { x: 360, y: -620 }, gravity: 980, windAccelerationX: -90 },
-    groundY: 720,
-    expectedX: 1088.35,
-    expectedTime: 1.5430
-  },
-  {
-    name: 'low gravity',
-    input: { origin: { x: 640, y: 510 }, initialVelocity: { x: 360, y: -620 }, gravity: 760, windAccelerationX: 0 },
-    groundY: 720,
-    expectedX: 1331.01,
-    expectedTime: 1.9195
-  },
-  {
-    name: 'faster throw',
-    input: { origin: { x: 640, y: 510 }, initialVelocity: { x: 480, y: -700 }, gravity: 980, windAccelerationX: 0 },
-    groundY: 720,
-    expectedX: 1447.93,
-    expectedTime: 1.6832
-  }
-] as const;
+const input: TrajectoryInput = {
+  origin: { x: 640, y: NORMAL_POOP_PROJECTILE_CONFIG.startProjectionY },
+  initialVelocity: NORMAL_POOP_PROJECTILE_CONFIG.initialVelocity,
+  gravity: NORMAL_POOP_PROJECTILE_CONFIG.gravity,
+  windAccelerationX: NORMAL_POOP_PROJECTILE_CONFIG.windAccelerationX,
+  startProjectionY: NORMAL_POOP_PROJECTILE_CONFIG.startProjectionY,
+  targetProjectionY: NORMAL_POOP_PROJECTILE_CONFIG.targetProjectionY,
+  apexHeight: NORMAL_POOP_PROJECTILE_CONFIG.apexHeight,
+  travelDuration: NORMAL_POOP_PROJECTILE_CONFIG.travelDuration,
+  windAffectX: NORMAL_POOP_PROJECTILE_CONFIG.windAffectX,
+  windAffectY: NORMAL_POOP_PROJECTILE_CONFIG.windAffectY
+};
 
-describe('ProjectileTrajectory', () => {
-  it.each(goldenCases)('matches golden landing case: $name', ({ input, groundY, expectedX, expectedTime }) => {
-    const landing = predictLanding(input, groundY, 1 / 120, 4);
-
-    expect(landing.landed).toBe(true);
-    expect(landing.point.x).toBeCloseTo(expectedX, 1);
-    expect(landing.point.time).toBeCloseTo(expectedTime, 3);
-    expect(landing.point.y).toBe(groundY);
+describe('ProjectileTrajectory ground projection and visual arc', () => {
+  it('starts and ends the ground projection at configured Y coordinates', () => {
+    expect(groundProjectionAt(input, 0)).toMatchObject({ x: 640, y: 500, time: 0 });
+    expect(groundProjectionAt(input, input.travelDuration)).toMatchObject({ y: 230, time: 1.55 });
   });
 
-  it('uses the same source calculation for sampled prediction and direct position', () => {
-    const input = {
-      origin: { x: 100, y: 500 },
-      initialVelocity: { x: 280, y: -540 },
-      gravity: 900,
-      windAccelerationX: 50
-    };
-    const points = sampleTrajectory(input, 0.25, 1);
-
-    expect(points[2]).toEqual(positionAt(input, 0.5));
-    expect(velocityAt(input, 0.5)).toEqual({ x: 305, y: -90 });
+  it('separates maximum visual height from ground projection at midpoint', () => {
+    const midpoint = trajectoryStateAt(input, input.travelDuration / 2);
+    expect(midpoint.progress).toBe(0.5);
+    expect(midpoint.groundProjection.y - midpoint.visualPosition.y).toBe(input.apexHeight);
+    expect(midpoint.visualPosition.y).toBeLessThan(midpoint.groundProjection.y);
   });
 
-  it('keeps predicted landing and simulated landing within tolerance', () => {
-    const input = {
-      origin: { x: 600, y: 505 },
-      initialVelocity: NORMAL_POOP_PROJECTILE_CONFIG.initialVelocity,
-      gravity: NORMAL_POOP_PROJECTILE_CONFIG.gravity,
-      windAccelerationX: NORMAL_POOP_PROJECTILE_CONFIG.windAccelerationX
-    };
-    const predicted = predictLanding(input, 720, 1 / 120, 4);
-    let simulated = positionAt(input, 0);
+  it('keeps visual and ground positions together at both endpoints', () => {
+    expect(visualPositionAt(input, 0)).toEqual(groundProjectionAt(input, 0));
+    expect(visualPositionAt(input, input.travelDuration)).toEqual(groundProjectionAt(input, input.travelDuration));
+  });
 
-    for (let time = 0; time <= 4; time += 1 / 120) {
-      simulated = positionAt(input, time);
-      if (simulated.y >= 720) {
-        break;
-      }
-    }
+  it('is deterministic for identical inputs', () => {
+    expect(sampleGroundProjection(input, 32)).toEqual(sampleGroundProjection(input, 32));
+    expect(sampleVisualTrajectory(input, 32)).toEqual(sampleVisualTrajectory(input, 32));
+  });
 
-    expect(Math.abs(predicted.point.x - simulated.x)).toBeLessThan(NORMAL_POOP_PROJECTILE_CONFIG.landingTolerance);
+  it('covers the canonical top lane with configured reach padding', () => {
+    const canonicalTopLaneY = 250.2;
+    const landing = predictLanding(input);
+    expect(landing.point.y).toBeLessThanOrEqual(canonicalTopLaneY + NORMAL_POOP_PROJECTILE_CONFIG.topLaneReachPadding);
+    expect(landing.point.y).toBeGreaterThanOrEqual(canonicalTopLaneY - NORMAL_POOP_PROJECTILE_CONFIG.topLaneReachPadding);
+  });
+
+  it('applies data-driven wind only through configured projection axes', () => {
+    const windy = { ...input, windAccelerationX: 120 };
+    const landing = groundProjectionAt(windy, windy.travelDuration);
+    expect(landing.x).toBeCloseTo(784.15, 2);
+    expect(landing.y).toBe(230);
   });
 });

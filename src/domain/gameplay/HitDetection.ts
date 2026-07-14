@@ -151,7 +151,7 @@ export function canNPCBeHit(npc: NPCInstanceState): boolean {
 function overlaps(projectile: Projectile, npc: NPCInstanceState, definition: NPCDefinition): boolean {
   const halfWidth = (definition.width * npc.scale) / 2;
   const height = definition.height * npc.scale;
-  const radius = projectile.config.radius;
+  const radius = projectile.config.collisionRadius;
   const minProjectileX = Math.min(projectile.previousPosition.x, projectile.position.x);
   const maxProjectileX = Math.max(projectile.previousPosition.x, projectile.position.x);
   const minProjectileY = Math.min(projectile.previousPosition.y, projectile.position.y);

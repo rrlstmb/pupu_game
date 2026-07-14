@@ -9,6 +9,7 @@ import type { PlayerState } from './domain/player/PlayerMovement';
 import type { EnvironmentalEffectState } from './domain/poop/EnvironmentalEffectZone';
 import type { PoopInventoryState } from './domain/poop/PoopInventory';
 import type { ProjectileSystemState } from './domain/projectile/ProjectileSystem';
+import type { ChargeState } from './domain/projectile/ChargeSystem';
 import type { ProjectileViewPoolStats } from './systems/projectile/PhaserProjectileSystem';
 import type { NPCViewPoolStats } from './systems/npc/PhaserNPCSystem';
 import type { ScoreState } from './domain/score/ScoreCalculator';
@@ -52,12 +53,14 @@ declare global {
       landingError?: number;
       windAccelerationX?: number;
       aimAssistVisible?: boolean;
+      chargeState?: ChargeState;
+      chargeMeterVisible?: boolean;
       inputListenerCount?: number;
       debugOverlayVisible?: boolean;
       levelSession?: LevelSession;
       advanceLevelTime?: (seconds: number) => void;
-      spawnNPCSandbox?: (npcType: string, x?: number) => void;
-      clearNPCSandbox?: () => void;
+      spawnNPCSandbox?: (npcType: string, x?: number, laneId?: 'back_shop' | 'mid_sidewalk' | 'front_road') => void;
+      clearNPCSandbox?: (disableAutoSpawn?: boolean) => void;
     };
   }
 }
