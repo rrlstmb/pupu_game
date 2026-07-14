@@ -30,7 +30,7 @@ export class MenuScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     const startButton = this.add
-      .text(GAME_CONFIG.width / 2, 400, '開始', {
+      .text(GAME_CONFIG.width / 2, 400, '開始第 1 關', {
         fontFamily: 'sans-serif',
         fontSize: '36px',
         color: '#171923',
@@ -44,7 +44,7 @@ export class MenuScene extends Phaser.Scene {
     startButton.on(Phaser.Input.Events.POINTER_UP, this.startGame, this);
 
     this.add
-      .text(GAME_CONFIG.width / 2, 650, 'Phase 01 scaffold only', {
+      .text(GAME_CONFIG.width / 2, 650, '第 1 關：90 秒精準投遞', {
         fontFamily: 'monospace',
         fontSize: '18px',
         color: '#9ca3af'
@@ -65,4 +65,3 @@ export class MenuScene extends Phaser.Scene {
     this.scene.start(SceneKeys.Game);
   }
 }
-

@@ -19,7 +19,8 @@ export function resolveProjectileNPCHits(
   npcs: readonly NPCInstanceState[],
   definitions: readonly NPCDefinition[],
   existingHitTokens: ReadonlySet<string>,
-  poopDefinitions: readonly PoopDefinition[] = []
+  poopDefinitions: readonly PoopDefinition[] = [],
+  sessionId = 'legacy-session'
 ): HitDetectionResult {
   const nextTokens = new Set(existingHitTokens);
   const projectileIdsToRecycle = new Set<number>();
@@ -99,6 +100,7 @@ export function resolveProjectileNPCHits(
             : candidate
         );
         events.push({
+          sessionId,
           type: GameplayEventTypes.ProjectileHit,
           token,
           projectileId: projectile.id,

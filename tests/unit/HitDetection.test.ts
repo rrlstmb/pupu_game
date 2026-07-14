@@ -17,12 +17,13 @@ describe('HitDetection and rant loop', () => {
     const npc = npcAt(1, 500, 'Walking');
     const projectile = projectileAt(10, 500, 300);
 
-    const result = resolveProjectileNPCHits([projectile], [npc], NPC_DEFINITIONS, new Set(), POOP_DEFINITIONS);
+    const result = resolveProjectileNPCHits([projectile], [npc], NPC_DEFINITIONS, new Set(), POOP_DEFINITIONS, 'level-01-attempt-1');
 
     expect(result.projectileIdsToRecycle).toEqual([10]);
     expect(result.npcs[0].state).toBe('Hit');
     expect(result.npcs[0].validHitCount).toBe(1);
     expect(result.events.map((event) => event.type)).toEqual([GameplayEventTypes.ProjectileHit]);
+    expect(result.events[0].sessionId).toBe('level-01-attempt-1');
     expect(result.npcs[0]).toMatchObject({
       rantRemainingSeconds: NPC_HIT_REACTION_RULES[0].rantDurationSeconds,
       immunityRemainingSeconds: NPC_HIT_REACTION_RULES[0].immunitySeconds,

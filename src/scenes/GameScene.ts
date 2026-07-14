@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { ALERT_RULES } from '../data/alertRules';
 import { NPC_DEFINITIONS, NPC_SPAWN_CONFIG } from '../data/npcDefinitions';
+import { LEVEL_01 } from '../data/levels/level01';
 import { POOP_DEFINITIONS, poopDefinitionById } from '../data/poopDefinitions';
 import { PLAYER_MOVEMENT_CONFIG } from '../data/playerMovement';
 import { NORMAL_POOP_PROJECTILE_CONFIG, THROW_WORLD_CONFIG, type ProjectileConfig } from '../data/projectileConfig';
@@ -22,9 +23,17 @@ import {
   type GameplayEvent
 } from '../domain/gameplay/GameplayEvents';
 import { Depths } from '../domain/layout/Depth';
+import {
+  createLevelSession,
+  failLevelCaught,
+  toggleLevelPause,
+  updateLevelMetrics,
+  updateLevelSession,
+  type LevelSession
+} from '../domain/level/LevelDirector';
 import { createWorldLayout, type Lane, type ParallaxLayer, type WorldLayout } from '../domain/layout/WorldLayout';
 import { createNPCSpawnerState, spawnNPCOfType, updateNPCSpawner } from '../domain/npc/NPCSpawner';
-import type { NPCSpawnerState } from '../domain/npc/NPCModel';
+import type { NPCSpawnerState, NPCSpawnConfig } from '../domain/npc/NPCModel';
 import { createInitialPlayerState, updatePlayerMovement, type PlayerState } from '../domain/player/PlayerMovement';
 import {
   alertIncreaseFromZones,
@@ -73,7 +82,8 @@ export class GameScene extends Phaser.Scene {
   private aimAssist!: AimAssist;
   private npcSystem!: PhaserNPCSystem;
   private npcSpawnerState!: NPCSpawnerState;
-  private npcRng = new SeededRng(NPC_SPAWN_CONFIG.seed);
+  private npcRng = new SeededRng(LEVEL_01.seed);
+  private levelSession?: LevelSession;
   private hitTokens = new Set<string>();
   private readonly gameplayEvents: GameplayEvent[] = [];
   private scoreState: ScoreState = createScoreState();
@@ -89,7 +99,6 @@ export class GameScene extends Phaser.Scene {
   private playerLabel?: Phaser.GameObjects.Text;
   private readonly scrollingLayers: Array<{ sprite: Phaser.GameObjects.TileSprite; factor: number }> = [];
   private debugOverlay?: Phaser.GameObjects.Container;
-  private failureOverlay?: Phaser.GameObjects.Container;
   private readonly zoneViews = new Map<string, Phaser.GameObjects.Arc>();
   private debugOverlayVisible = false;
 
@@ -98,15 +107,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
+    const attempt = (this.levelSession?.attempt ?? 0) + 1;
+    this.levelSession = createLevelSession(LEVEL_01, attempt);
+    const levelPoopDefinitions = this.levelPoopDefinitions();
     this.hitTokens = new Set<string>();
     this.gameplayEvents.length = 0;
     this.scoreState = createScoreState();
-    this.poopInventory = createPoopInventory(POOP_DEFINITIONS);
+    this.poopInventory = createPoopInventory(levelPoopDefinitions);
     this.environmentalEffects = createEnvironmentalEffectState();
     this.projectileConfig = NORMAL_POOP_PROJECTILE_CONFIG;
-    this.npcRng = new SeededRng(NPC_SPAWN_CONFIG.seed);
+    this.npcRng = new SeededRng(this.levelSession.definition.seed);
     this.isGameOver = false;
-    this.failureOverlay = undefined;
     this.scrollingLayers.length = 0;
     this.layout = createWorldLayout(GAME_CONFIG.width, GAME_CONFIG.height);
     this.inputAdapter = new InputAdapter(this);
@@ -164,8 +175,19 @@ export class GameScene extends Phaser.Scene {
       const index = Number(event.key) - 1;
       if (event.altKey && index >= 0 && index < POOP_DEFINITIONS.length) {
         event.preventDefault();
+        if (this.poopInventory.slots.length !== POOP_DEFINITIONS.length) {
+          this.poopInventory = createPoopInventory(POOP_DEFINITIONS);
+        }
         this.poopInventory = selectPoopByIndex(this.poopInventory, index);
       }
+    };
+    const togglePause = (event: KeyboardEvent) => {
+      if (event.code !== 'Escape' || !this.levelSession || this.levelSession.phase === 'settled') {
+        return;
+      }
+      event.preventDefault();
+      this.levelSession = toggleLevelPause(this.levelSession);
+      eventBus.emit(GameEvents.LevelUpdated, this.levelSession);
     };
     const npcSandbox = (event: KeyboardEvent) => {
       if (!event.altKey || !event.shiftKey) {
@@ -192,6 +214,7 @@ export class GameScene extends Phaser.Scene {
     window.addEventListener('keydown', adjustWind);
     window.addEventListener('keydown', arsenalSandbox);
     window.addEventListener('keydown', npcSandbox);
+    document.addEventListener('keydown', togglePause, true);
 
     registerSceneDisposer(this, () => {
       menuButton.off(Phaser.Input.Events.POINTER_UP, this.returnToMenu, this);
@@ -201,6 +224,7 @@ export class GameScene extends Phaser.Scene {
       window.removeEventListener('keydown', adjustWind);
       window.removeEventListener('keydown', arsenalSandbox);
       window.removeEventListener('keydown', npcSandbox);
+      document.removeEventListener('keydown', togglePause, true);
       this.inputAdapter.dispose();
       this.projectileSystem.dispose();
       this.aimAssist.dispose();
@@ -208,8 +232,6 @@ export class GameScene extends Phaser.Scene {
       this.scrollingLayers.length = 0;
       this.debugOverlay?.destroy(true);
       this.debugOverlay = undefined;
-      this.failureOverlay?.destroy(true);
-      this.failureOverlay = undefined;
       for (const view of this.zoneViews.values()) {
         view.destroy();
       }
@@ -221,13 +243,22 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    if (this.isGameOver) {
+    const deltaSeconds = delta / 1000;
+    if (!this.levelSession) {
+      return;
+    }
+    this.levelSession = updateLevelSession(this.levelSession, deltaSeconds);
+    if (this.levelSession.phase === 'settled') {
+      this.isGameOver = true;
+    }
+    if (this.isGameOver || this.levelSession.phase === 'paused' || this.levelSession.phase === 'countdown') {
+      this.updateAimAssistForLevel();
+      this.emitRuntimeState();
       this.inputAdapter.endFrame();
       this.setDebugState();
       return;
     }
 
-    const deltaSeconds = delta / 1000;
     for (const layer of this.scrollingLayers) {
       layer.sprite.tilePositionX += deltaSeconds * this.layout.parallaxBaseSpeed * layer.factor;
     }
@@ -264,14 +295,14 @@ export class GameScene extends Phaser.Scene {
     const previousNpcs = this.npcSpawnerState.npcs;
     this.npcSpawnerState = updateNPCSpawner(
       this.npcSpawnerState,
-      NPC_SPAWN_CONFIG,
+      this.levelSpawnConfig(),
       NPC_DEFINITIONS,
       this.layout.lanes,
       deltaSeconds,
       this.layout.width,
       this.npcRng
     );
-    const transitionEvents = collectNPCStateTransitionEvents(previousNpcs, this.npcSpawnerState.npcs);
+    const transitionEvents = collectNPCStateTransitionEvents(previousNpcs, this.npcSpawnerState.npcs, this.levelSession.id);
     if (transitionEvents.length > 0) {
       this.gameplayEvents.push(...transitionEvents);
       this.applyGameplayEventsToScore(transitionEvents);
@@ -300,7 +331,7 @@ export class GameScene extends Phaser.Scene {
     };
     this.projectileSystem.setConfig(this.projectileConfig);
     const trajectory = this.currentThrowTrajectory();
-    this.aimAssist.setVisible(input.aim.held && this.projectileConfig.aimAssistEnabled);
+    this.aimAssist.setVisible(this.shouldShowAimAssist(input.aim.held));
     this.aimAssist.update(
       trajectory,
       this.projectileGroundY(),
@@ -321,6 +352,9 @@ export class GameScene extends Phaser.Scene {
       );
       if (fired) {
         this.poopInventory = consumeSelectedPoop(this.poopInventory, POOP_DEFINITIONS);
+        this.levelSession = updateLevelMetrics(this.levelSession, {
+          throwCount: this.levelSession.metrics.throwCount + 1
+        });
       }
     }
 
@@ -337,7 +371,8 @@ export class GameScene extends Phaser.Scene {
       this.npcSpawnerState.npcs,
       NPC_DEFINITIONS,
       this.hitTokens,
-      POOP_DEFINITIONS
+      POOP_DEFINITIONS,
+      this.levelSession.id
     );
     if (hitResult.events.length > 0) {
       this.npcSpawnerState = {
@@ -348,6 +383,11 @@ export class GameScene extends Phaser.Scene {
       this.gameplayEvents.push(...hitResult.events);
       this.applyGameplayEventsToAlert(hitResult.events);
       this.applyGameplayEventsToScore(hitResult.events);
+      this.levelSession = updateLevelMetrics(this.levelSession, {
+        hitCount: this.levelSession.metrics.hitCount + hitResult.events.filter(
+          (event) => event.type === GameplayEventTypes.ProjectileHit
+        ).length
+      });
       this.createZonesFromHitProjectiles(projectileSnapshot, hitResult.projectileIdsToRecycle);
       this.projectileSystem.recycleByIds(hitResult.projectileIdsToRecycle);
       this.hitTokens = new Set(removeHitTokensForProjectiles(this.hitTokens, hitResult.projectileIdsToRecycle));
@@ -358,10 +398,15 @@ export class GameScene extends Phaser.Scene {
     if (!this.isComboClockPaused()) {
       this.scoreState = updateComboTimer(this.scoreState, deltaSeconds);
     }
+    this.levelSession = updateLevelMetrics(this.levelSession, {
+      totalScore: this.scoreState.totalScore,
+      highestCombo: this.scoreState.comboCount
+    });
+    if (this.levelSession.phase === 'settled') {
+      this.isGameOver = true;
+    }
     this.checkFailureLatch();
-    eventBus.emit(GameEvents.AlertUpdated, this.alertState);
-    eventBus.emit(GameEvents.PoopInventoryUpdated, this.poopInventory);
-    eventBus.emit(GameEvents.ScoreUpdated, this.scoreState);
+    this.emitRuntimeState();
     this.npcSystem.sync(this.npcSpawnerState, this.debugOverlayVisible);
     this.inputAdapter.endFrame();
     this.setDebugState();
@@ -374,7 +419,7 @@ export class GameScene extends Phaser.Scene {
 
   private applyGameplayEventsToScore(events: readonly GameplayEvent[]): void {
     for (const event of events) {
-      if (event.type !== GameplayEventTypes.NPCRantStarted) {
+      if (event.type !== GameplayEventTypes.NPCRantStarted || event.sessionId !== this.levelSession?.id) {
         continue;
       }
 
@@ -429,13 +474,53 @@ export class GameScene extends Phaser.Scene {
     return isPlayerInCover(this.playerState.x, this.layout.rooftop.coverSlots);
   }
 
+  private levelPoopDefinitions() {
+    return POOP_DEFINITIONS.filter((definition) => LEVEL_01.availablePoopTypes.includes(definition.id));
+  }
+
+  private levelSpawnConfig(): NPCSpawnConfig {
+    return {
+      seed: LEVEL_01.seed,
+      ...LEVEL_01.spawn
+    };
+  }
+
+  private shouldShowAimAssist(isAimHeld: boolean): boolean {
+    if (!this.projectileConfig.aimAssistEnabled || LEVEL_01.aimAssist === 'disabled') {
+      return false;
+    }
+    return LEVEL_01.aimAssist === 'always' || isAimHeld;
+  }
+
+  private updateAimAssistForLevel(): void {
+    const trajectory = this.currentThrowTrajectory();
+    this.aimAssist.setVisible(this.shouldShowAimAssist(false));
+    this.aimAssist.update(
+      trajectory,
+      this.projectileGroundY(),
+      this.projectileConfig,
+      this.projectileSystem.getActualLandingError()
+    );
+  }
+
+  private emitRuntimeState(): void {
+    eventBus.emit(GameEvents.AlertUpdated, this.alertState);
+    eventBus.emit(GameEvents.PoopInventoryUpdated, this.poopInventory);
+    eventBus.emit(GameEvents.ScoreUpdated, this.scoreState);
+    if (this.levelSession) {
+      eventBus.emit(GameEvents.LevelUpdated, this.levelSession);
+    }
+  }
+
   private checkFailureLatch(): void {
     if (this.isGameOver || !this.alertState.isCaught) {
       return;
     }
 
+    if (this.levelSession) {
+      this.levelSession = failLevelCaught(this.levelSession);
+    }
     this.isGameOver = true;
-    this.renderFailureOverlay();
   }
 
   private stopFrameIfCaught(): boolean {
@@ -444,44 +529,12 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.checkFailureLatch();
-    eventBus.emit(GameEvents.AlertUpdated, this.alertState);
-    eventBus.emit(GameEvents.PoopInventoryUpdated, this.poopInventory);
-    eventBus.emit(GameEvents.ScoreUpdated, this.scoreState);
+    this.emitRuntimeState();
     this.syncPlayerView();
     this.npcSystem.sync(this.npcSpawnerState, this.debugOverlayVisible);
     this.inputAdapter.endFrame();
     this.setDebugState();
     return true;
-  }
-
-  private renderFailureOverlay(): void {
-    const overlay = this.add.container(0, 0).setDepth(Depths.hud + 20);
-    const panel = this.add.rectangle(0, 0, GAME_CONFIG.width, GAME_CONFIG.height, 0x111827, 0.78).setOrigin(0, 0);
-    const title = this.add
-      .text(GAME_CONFIG.width / 2, GAME_CONFIG.height * 0.38, '被抓包了！', {
-        fontFamily: 'sans-serif',
-        fontSize: '44px',
-        color: '#fef3c7',
-        backgroundColor: '#7f1d1d',
-        padding: { x: 18, y: 10 }
-      })
-      .setOrigin(0.5);
-    const retry = this.add
-      .text(GAME_CONFIG.width / 2, GAME_CONFIG.height * 0.55, '重試', {
-        fontFamily: 'sans-serif',
-        fontSize: '28px',
-        color: '#111827',
-        backgroundColor: '#a7f3d0',
-        padding: { x: 26, y: 12 }
-      })
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
-
-    retry.on(Phaser.Input.Events.POINTER_UP, () => {
-      this.scene.restart();
-    });
-    overlay.add([panel, title, retry]);
-    this.failureOverlay = overlay;
   }
 
   private createZonesFromLandedProjectiles(): void {
@@ -806,7 +859,8 @@ export class GameScene extends Phaser.Scene {
     window.__SHIMING_BIDA_DEBUG__.eventBusListenerCounts = {
       score: eventBus.listenerCount(GameEvents.ScoreUpdated),
       alert: eventBus.listenerCount(GameEvents.AlertUpdated),
-      inventory: eventBus.listenerCount(GameEvents.PoopInventoryUpdated)
+      inventory: eventBus.listenerCount(GameEvents.PoopInventoryUpdated),
+      level: eventBus.listenerCount(GameEvents.LevelUpdated)
     };
     window.__SHIMING_BIDA_DEBUG__.gameplayEvents = this.gameplayEvents;
     window.__SHIMING_BIDA_DEBUG__.score = this.scoreState;
@@ -824,6 +878,18 @@ export class GameScene extends Phaser.Scene {
     window.__SHIMING_BIDA_DEBUG__.aimAssistVisible = this.aimAssist.isVisible();
     window.__SHIMING_BIDA_DEBUG__.inputListenerCount = this.inputAdapter.getBoundListenerCount();
     window.__SHIMING_BIDA_DEBUG__.debugOverlayVisible = this.debugOverlayVisible;
+    window.__SHIMING_BIDA_DEBUG__.levelSession = this.levelSession;
+    window.__SHIMING_BIDA_DEBUG__.advanceLevelTime = (seconds: number) => {
+      if (!this.levelSession) {
+        return;
+      }
+      this.levelSession = updateLevelSession(this.levelSession, seconds);
+      if (this.levelSession.phase === 'settled') {
+        this.isGameOver = true;
+      }
+      this.emitRuntimeState();
+      this.setDebugState();
+    };
     window.__SHIMING_BIDA_DEBUG__.spawnNPCSandbox = (npcType: string, x?: number) => {
       const definition = NPC_DEFINITIONS.find((candidate) => candidate.id === npcType);
       if (!definition) {
@@ -877,6 +943,8 @@ export class GameScene extends Phaser.Scene {
     delete debug.aimAssistVisible;
     delete debug.inputListenerCount;
     delete debug.debugOverlayVisible;
+    delete debug.levelSession;
+    delete debug.advanceLevelTime;
     delete debug.spawnNPCSandbox;
     delete debug.clearNPCSandbox;
   }

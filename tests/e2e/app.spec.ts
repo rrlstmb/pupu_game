@@ -96,6 +96,7 @@ test('phase 03 keyboard movement stays horizontal, bounded, and does not duplica
   expect(menuBox).not.toBeNull();
   await page.mouse.click(menuBox!.x + menuBox!.width / 2, menuBox!.y + menuBox!.height * 0.56);
   await expect.poll(() => activeScenes(page)).toContain('GameScene');
+  await startLevelForTest(page);
 
   const firstEntryListeners = await inputListenerCount(page);
   const initial = await playerState(page);
@@ -140,7 +141,7 @@ test('phase 03 keyboard movement stays horizontal, bounded, and does not duplica
   await page.screenshot({ path: 'docs/evidence/phase-03-player-move.png', fullPage: true });
 });
 
-test('phase 04 throws a predictable projectile and toggles aim assist', async ({ page }) => {
+test('phase 04 throws a predictable projectile with Level 1 always-on aim assist', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('canvas')).toHaveAttribute('data-game-ready', 'true');
 
@@ -149,6 +150,7 @@ test('phase 04 throws a predictable projectile and toggles aim assist', async ({
   expect(menuBox).not.toBeNull();
   await page.mouse.click(menuBox!.x + menuBox!.width / 2, menuBox!.y + menuBox!.height * 0.56);
   await expect.poll(() => activeScenes(page)).toContain('GameScene');
+  await startLevelForTest(page);
 
   await page.keyboard.down('KeyA');
   await expect.poll(async () => (await playerState(page)).x, { timeout: 6_000 }).toBeLessThan(300);
@@ -172,7 +174,7 @@ test('phase 04 throws a predictable projectile and toggles aim assist', async ({
   await expect.poll(() => landingError(page), { timeout: 1_000 }).toBeLessThan(4);
 
   await page.keyboard.up('ShiftLeft');
-  await expect.poll(() => aimAssistVisible(page)).toBe(false);
+  await expect.poll(() => aimAssistVisible(page)).toBe(true);
 });
 
 test('retro Gate A survives ten scene entries, pause, blur, and projectile view reuse', async ({ page }) => {
@@ -201,6 +203,7 @@ test('retro Gate A survives ten scene entries, pause, blur, and projectile view 
 
   await clickMenuStart(page, canvas);
   await expect.poll(() => activeScenes(page)).toContain('GameScene');
+  await startLevelForTest(page);
   await page.keyboard.down('KeyD');
   await expect.poll(async () => (await playerState(page)).velocityX).toBeGreaterThan(0);
   await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.game.scene.pause('GameScene'));
@@ -255,7 +258,13 @@ test('phase 05 spawns pooled NPCs moving right to left with distinct behavior', 
   expect(menuBox).not.toBeNull();
   await page.mouse.click(menuBox!.x + menuBox!.width / 2, menuBox!.y + menuBox!.height * 0.56);
   await expect.poll(() => activeScenes(page)).toContain('GameScene');
+  await startLevelForTest(page);
   await page.keyboard.press('KeyL');
+
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.clearNPCSandbox?.());
+  await spawnNPCSandboxSlot(page, 0);
+  await spawnNPCSandboxSlot(page, 1);
+  await spawnNPCSandboxSlot(page, 2);
 
   await expect.poll(async () => (await npcSpawner(page)).npcs.length).toBeGreaterThan(0);
   const first = (await npcSpawner(page)).npcs[0];
@@ -303,7 +312,8 @@ test('phase 06 projectile hit stops NPC ranting, recovers, then allows a second 
   expect(menuBox).not.toBeNull();
   await page.mouse.click(menuBox!.x + menuBox!.width / 2, menuBox!.y + menuBox!.height * 0.56);
   await expect.poll(() => activeScenes(page)).toContain('GameScene');
-  await clearAndSpawnNPC(page, 'office_worker', 1040);
+  await startLevelForTest(page);
+  await clearAndSpawnNPC(page, 'office_worker', 1160);
 
   const targetId = await fireAtHittableNPCAndWaitForRant(page);
   await expect.poll(async () => npcById(page, targetId).then((npc) => npc?.validHitCount ?? 0), { timeout: 5_000 }).toBe(1);
@@ -336,7 +346,8 @@ test('phase 07 scores rant events, displays combo HUD, and resets combo on timeo
   expect(menuBox).not.toBeNull();
   await page.mouse.click(menuBox!.x + menuBox!.width / 2, menuBox!.y + menuBox!.height * 0.56);
   await expect.poll(() => activeScenes(page)).toContain('GameScene');
-  await clearAndSpawnNPC(page, 'office_worker', 1040);
+  await startLevelForTest(page);
+  await clearAndSpawnNPC(page, 'office_worker', 1160);
 
   const targetId = await fireAtHittableNPCAndWaitForRant(page);
   await expect.poll(async () => (await scoreState(page)).breakdowns.length, { timeout: 5_000 }).toBe(1);
@@ -378,6 +389,7 @@ test('phase 08 raises alert, decays in cover, fails at 100, and retries cleanly'
   expect(menuBox).not.toBeNull();
   await page.mouse.click(menuBox!.x + menuBox!.width / 2, menuBox!.y + menuBox!.height * 0.56);
   await expect.poll(() => activeScenes(page)).toContain('GameScene');
+  await startLevelForTest(page);
   await page.keyboard.press('BracketRight');
   await expect.poll(() => windAccelerationX(page)).toBe(90);
   const inputListenersBeforeRetry = await inputListenerCount(page);
@@ -396,7 +408,11 @@ test('phase 08 raises alert, decays in cover, fails at 100, and retries cleanly'
   await expect.poll(async () => (await alertState(page)).value, { timeout: 3_000 }).toBeLessThan(beforeCoverDecay);
   expect(await isPlayerInCover(page)).toBe(true);
 
-  await fireRapidThrows(page, 24);
+  await page.keyboard.down('KeyD');
+  await expect.poll(async () => (await playerState(page)).x, { timeout: 6_000 }).toBeGreaterThan(500);
+  await page.keyboard.up('KeyD');
+  expect(await isPlayerInCover(page)).toBe(false);
+  await fireRapidThrowsWithoutTargets(page, 24);
   await expect.poll(() => isGameOver(page), { timeout: 10_000 }).toBe(true);
   const failed = await alertState(page);
   expect(failed.value).toBe(100);
@@ -406,10 +422,8 @@ test('phase 08 raises alert, decays in cover, fails at 100, and retries cleanly'
   await page.waitForTimeout(800);
   expect((await scoreState(page)).totalScore).toBe(scoreAtFailure.totalScore);
 
-  await expect.poll(() => hudAlertText(page)).toContain('R 重試');
-  const box = await canvas.boundingBox();
-  expect(box).not.toBeNull();
-  await page.mouse.click(box!.x + box!.width - 120, box!.y + 118);
+  await expect.poll(() => hudResultText(page)).toContain('被抓包了');
+  await page.keyboard.press('KeyR');
   await expect.poll(() => isGameOver(page), { timeout: 5_000 }).toBe(false);
   const resetAlert = await alertState(page);
   const resetScore = await scoreState(page);
@@ -419,15 +433,17 @@ test('phase 08 raises alert, decays in cover, fails at 100, and retries cleanly'
   expect(resetScore.totalScore).toBe(0);
   expect(resetScore.comboCount).toBe(0);
   expect(resetProjectiles.projectiles).toHaveLength(0);
-  expect(resetNpcs.npcs).toHaveLength(1);
-  expect(resetNpcs.npcs[0]).toMatchObject({ id: 1, validHitCount: 0 });
+  expect(resetNpcs.npcs).toHaveLength(0);
   expect(await gameplayEvents(page)).toEqual([]);
   expect(await hitTokenCount(page)).toBe(0);
   expect(await windAccelerationX(page)).toBe(0);
   expect(await inputListenerCount(page)).toBe(inputListenersBeforeRetry);
   expect(await gameSceneLifecycleListenerCounts(page)).toEqual(lifecycleListenersBeforeRetry);
   expect(await eventBusListenerCounts(page)).toEqual(eventBusListenersBeforeRetry);
-  expect(eventBusListenersBeforeRetry).toEqual({ score: 1, alert: 1, inventory: 1 });
+  expect(eventBusListenersBeforeRetry).toEqual({ score: 1, alert: 1, inventory: 1, level: 1 });
+  await startLevelForTest(page);
+  await expect.poll(async () => (await npcSpawner(page)).npcs.length).toBeGreaterThan(0);
+  expect((await npcSpawner(page)).npcs[0]).toMatchObject({ id: 1, validHitCount: 0 });
   await expect
     .poll(async () => (await npcViewPool(page)).active - (await npcSpawner(page)).npcs.length)
     .toBe(0);
@@ -443,7 +459,8 @@ test('retro Gate B completes hit, rant, score, combo, alert, recover, and repeat
   expect(menuBox).not.toBeNull();
   await page.mouse.click(menuBox!.x + menuBox!.width / 2, menuBox!.y + menuBox!.height * 0.56);
   await expect.poll(() => activeScenes(page)).toContain('GameScene');
-  await clearAndSpawnNPC(page, 'office_worker', 1040);
+  await startLevelForTest(page);
+  await clearAndSpawnNPC(page, 'office_worker', 1160);
 
   const targetId = await fireAtHittableNPCAndWaitForRant(page);
   const firstEvents = await gameplayEvents(page);
@@ -484,8 +501,10 @@ test('phase 09 switches tactical poop, applies sticky, and blocks depleted jumbo
   expect(menuBox).not.toBeNull();
   await page.mouse.click(menuBox!.x + menuBox!.width / 2, menuBox!.y + menuBox!.height * 0.56);
   await expect.poll(() => activeScenes(page)).toContain('GameScene');
+  await startLevelForTest(page);
   await expect.poll(() => hudPoopText(page)).toContain('普通便');
 
+  await selectArsenalSlot(page, 1);
   await page.keyboard.press('KeyE');
   await expect.poll(() => hudPoopText(page)).toContain('黏黏便');
   await clearAndSpawnNPC(page, 'office_worker', 1040);
@@ -523,6 +542,7 @@ test('phase 10 arsenal sandbox demonstrates eight tactical poop types without le
   expect(menuBox).not.toBeNull();
   await page.mouse.click(menuBox!.x + menuBox!.width / 2, menuBox!.y + menuBox!.height * 0.56);
   await expect.poll(() => activeScenes(page)).toContain('GameScene');
+  await startLevelForTest(page);
 
   const labels = ['普通便', '黏黏便', '飛濺便', '巨無霸便', '彈跳便', '臭氣便', '分裂便', '黃金便'];
   for (let index = 0; index < labels.length; index += 1) {
@@ -598,6 +618,7 @@ test('phase 11 npc sandbox spawns complete roster with visible tactical states',
   expect(menuBox).not.toBeNull();
   await page.mouse.click(menuBox!.x + menuBox!.width / 2, menuBox!.y + menuBox!.height * 0.56);
   await expect.poll(() => activeScenes(page)).toContain('GameScene');
+  await startLevelForTest(page);
   await page.keyboard.press('KeyL');
 
   const expectedTypes = [
@@ -632,6 +653,109 @@ test('phase 11 npc sandbox spawns complete roster with visible tactical states',
     .toBe(true);
 
   await page.screenshot({ path: 'docs/evidence/phase-11-npc-sandbox.png', fullPage: true });
+});
+
+test('phase 12 runs Level 1 through pause, timeout result, and deterministic clean retry', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto('/');
+  await expect(page.locator('canvas')).toHaveAttribute('data-game-ready', 'true');
+  const canvas = page.locator('canvas');
+  await clickMenuStart(page, canvas);
+  await expect.poll(() => activeScenes(page)).toContain('GameScene');
+
+  const initial = await levelSession(page);
+  expect(initial.definition).toMatchObject({
+    id: 'level_01', durationSeconds: 90, targetScore: 500, seed: 'level-01-seed',
+    availablePoopTypes: ['normal_poop'], aimAssist: 'always'
+  });
+  expect(initial.phase).toBe('countdown');
+  await expect.poll(() => hudLevelText(page)).toContain('倒數');
+  await advanceLevelTime(page, 3);
+  await expect.poll(async () => (await levelSession(page)).phase).toBe('running');
+  await expect.poll(() => aimAssistVisible(page)).toBe(true);
+
+  await expect.poll(async () => (await npcSpawner(page)).npcs.length).toBeGreaterThan(0);
+  const firstSpawn = (await npcSpawner(page)).npcs[0];
+  expect(firstSpawn.definitionId).toBe('office_worker');
+  const listenersBeforeRetry = await eventBusListenerCounts(page);
+  const lifecycleBeforeRetry = await gameSceneLifecycleListenerCounts(page);
+
+  await clearAndSpawnNPC(page, 'office_worker', 1160);
+  await fireAtHittableNPCAndWaitForRant(page);
+  await expect.poll(async () => (await scoreState(page)).comboRemainingSeconds).toBeGreaterThan(0);
+
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await levelSession(page)).phase).toBe('paused');
+  const pausedSnapshot = await levelSession(page);
+  const comboBeforePause = (await scoreState(page)).comboRemainingSeconds;
+  await page.waitForTimeout(800);
+  expect((await levelSession(page)).remainingSeconds).toBe(pausedSnapshot.remainingSeconds);
+  expect((await scoreState(page)).comboRemainingSeconds).toBe(comboBeforePause);
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await levelSession(page)).phase).toBe('running');
+
+  await advanceLevelTime(page, 90);
+  await expect.poll(async () => (await levelSession(page)).phase).toBe('settled');
+  const settled = await levelSession(page);
+  expect(settled.completionCount).toBe(1);
+  expect(settled.result).toMatchObject({ outcome: 'timeout', seed: 'level-01-seed' });
+  expect(settled.result?.totalScore).toBeGreaterThan(0);
+  expect(settled.result?.stars.conditions.map((condition) => condition.passed)).toEqual([false, false, false]);
+  await expect.poll(() => hudResultText(page)).toContain('時間到');
+  expect(await hudResultText(page)).toContain('[MISS] 命中率高於 60%');
+  await page.screenshot({ path: 'docs/evidence/phase-12-level-01-results.png', fullPage: true });
+
+  const firstSessionId = settled.id;
+  await clickResultRetry(page, canvas);
+  await expect.poll(async () => (await levelSession(page)).id).not.toBe(firstSessionId);
+  const retried = await levelSession(page);
+  expect(retried).toMatchObject({ attempt: 2, phase: 'countdown', remainingSeconds: 90 });
+  expect(retried.definition.seed).toBe(settled.definition.seed);
+  expect(retried.metrics).toEqual({ totalScore: 0, highestCombo: 0, hitCount: 0, throwCount: 0 });
+  expect((await npcSpawner(page)).npcs).toHaveLength(0);
+  expect((await projectileSystem(page)).projectiles).toHaveLength(0);
+  expect((await scoreState(page)).comboCount).toBe(0);
+  expect((await alertState(page)).value).toBe(0);
+  expect(await hitTokenCount(page)).toBe(0);
+  expect(await gameplayEvents(page)).toHaveLength(0);
+  expect(await eventBusListenerCounts(page)).toEqual(listenersBeforeRetry);
+  expect(await gameSceneLifecycleListenerCounts(page)).toEqual(lifecycleBeforeRetry);
+
+  await advanceLevelTime(page, 3);
+  await expect.poll(async () => (await npcSpawner(page)).npcs.length).toBeGreaterThan(0);
+  const retryFirstSpawn = (await npcSpawner(page)).npcs[0];
+  expect({ type: retryFirstSpawn.definitionId, lane: retryFirstSpawn.laneId }).toEqual({
+    type: firstSpawn.definitionId,
+    lane: firstSpawn.laneId
+  });
+});
+
+test('phase 12 settles Level 1 success once from legal normal-poop scoring', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto('/');
+  await expect(page.locator('canvas')).toHaveAttribute('data-game-ready', 'true');
+  const canvas = page.locator('canvas');
+  await clickMenuStart(page, canvas);
+  await expect.poll(() => activeScenes(page)).toContain('GameScene');
+  await startLevelForTest(page);
+
+  for (let hit = 0; hit < 6 && (await levelSession(page)).phase !== 'settled'; hit += 1) {
+    await clearAndSpawnNPC(page, 'office_worker', 1160);
+    await fireAtHittableNPCAndWaitForRant(page);
+  }
+
+  await expect.poll(async () => (await levelSession(page)).phase, { timeout: 8_000 }).toBe('settled');
+  const session = await levelSession(page);
+  expect(session.completionCount).toBe(1);
+  expect(session.result?.outcome).toBe('success');
+  expect(session.result?.totalScore).toBeGreaterThanOrEqual(session.definition.targetScore);
+  expect(session.result?.hitCount).toBeGreaterThan(0);
+  expect(session.result?.throwCount).toBeGreaterThanOrEqual(session.result?.hitCount ?? 0);
+  expect(session.result?.accuracy).toBeCloseTo((session.result?.hitCount ?? 0) / (session.result?.throwCount ?? 1), 8);
+  expect(session.result?.stars.conditions.find((condition) => condition.id === 'score_target')?.passed).toBe(true);
+  await expect.poll(() => hudResultText(page)).toContain('任務成功');
+  await expect.poll(() => hudResultText(page)).toContain('[PASS] 達成目標分數 500');
+  await page.screenshot({ path: 'docs/evidence/phase-12-level-01-success.png', fullPage: true });
 });
 
 async function activeScenes(page: Page): Promise<string[]> {
@@ -683,7 +807,7 @@ async function inputListenerCount(page: Page): Promise<number> {
 
 async function eventBusListenerCounts(
   page: Page
-): Promise<{ readonly score: number; readonly alert: number; readonly inventory: number }> {
+): Promise<{ readonly score: number; readonly alert: number; readonly inventory: number; readonly level: number }> {
   return page.evaluate(() => {
     const counts = window.__SHIMING_BIDA_DEBUG__?.eventBusListenerCounts;
     if (!counts) {
@@ -691,6 +815,43 @@ async function eventBusListenerCounts(
     }
     return counts;
   });
+}
+
+async function levelSession(page: Page) {
+  return page.evaluate(() => {
+    const session = window.__SHIMING_BIDA_DEBUG__?.levelSession;
+    if (!session) throw new Error('Level session debug state is not available');
+    return session;
+  });
+}
+
+async function advanceLevelTime(page: Page, seconds: number): Promise<void> {
+  await page.evaluate((delta) => window.__SHIMING_BIDA_DEBUG__?.advanceLevelTime?.(delta), seconds);
+}
+
+async function startLevelForTest(page: Page): Promise<void> {
+  const phase = (await levelSession(page)).phase;
+  if (phase === 'countdown') {
+    await advanceLevelTime(page, 3);
+  }
+  await expect.poll(async () => (await levelSession(page)).phase).toBe('running');
+}
+
+async function hudLevelText(page: Page): Promise<string> {
+  return page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.hudLevelText ?? '');
+}
+
+async function hudResultText(page: Page): Promise<string> {
+  return page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.hudResultText ?? '');
+}
+
+async function clickResultRetry(page: Page, canvas: ReturnType<Page['locator']>): Promise<void> {
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(
+    box!.x + box!.width * ((640 - 110) / 1280),
+    box!.y + box!.height * (590 / 720)
+  );
 }
 
 async function gameSceneLifecycleListenerCounts(
@@ -1023,6 +1184,14 @@ async function fireRapidThrows(page: Page, count: number): Promise<void> {
   for (let index = 0; index < count; index += 1) {
     await page.keyboard.press('Space');
     await page.waitForTimeout(520);
+  }
+}
+
+async function fireRapidThrowsWithoutTargets(page: Page, count: number): Promise<void> {
+  for (let index = 0; index < count; index += 1) {
+    await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.clearNPCSandbox?.());
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(500);
   }
 }
 

@@ -1,6 +1,7 @@
 import type { AlertState } from '../domain/alert/AlertSystem';
 import type { PoopInventoryState } from '../domain/poop/PoopInventory';
 import type { ScoreState } from '../domain/score/ScoreCalculator';
+import type { LevelSession } from '../domain/level/LevelDirector';
 
 export const GameEvents = {
   StartGame: 'game:start',
@@ -8,6 +9,7 @@ export const GameEvents = {
   AlertUpdated: 'alert:updated',
   PoopInventoryUpdated: 'poop_inventory:updated',
   ScoreUpdated: 'score:updated',
+  LevelUpdated: 'level:updated',
   SceneReady: 'scene:ready',
   SceneShutdown: 'scene:shutdown'
 } as const;
@@ -20,6 +22,7 @@ export type GameEventPayloads = {
   [GameEvents.AlertUpdated]: AlertState;
   [GameEvents.PoopInventoryUpdated]: PoopInventoryState;
   [GameEvents.ScoreUpdated]: ScoreState;
+  [GameEvents.LevelUpdated]: LevelSession;
   [GameEvents.SceneReady]: { scene: string };
   [GameEvents.SceneShutdown]: { scene: string };
 };

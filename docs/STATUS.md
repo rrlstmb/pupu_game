@@ -6,18 +6,15 @@ Codex must not set any phase to `PASS`.
 
 ## Current Phase
 
-- Phase: 11
-- Name: Complete NPC roster and interaction matrix
+- Phase: 12
+- Name: Level framework and Level 1 vertical slice
 - Status: READY_FOR_REVIEW
-- Updated: 2026-07-10
+- Updated: 2026-07-14
 
 ## Current Audit
 
-- Audit: Prompt 09-11 Post-Gate Regression
-- Scope: Prompts 09-11 only; verifies Gate A/B repairs did not regress completed tactical content
-- Status: READY_FOR_REVIEW
-- Updated: 2026-07-14
-- Prompt 12 remains `NOT_STARTED`; this audit does not advance the phase table.
+- Audit: none; Phase 12 implementation is current.
+- Prompt 13 remains `NOT_STARTED`.
 
 ## Audit History
 
@@ -160,7 +157,7 @@ Codex must not set any phase to `PASS`.
 | 09 | READY_FOR_REVIEW | `docs/evidence/PHASE_09.md` |
 | 10 | READY_FOR_REVIEW | `docs/evidence/PHASE_10.md` |
 | 11 | READY_FOR_REVIEW | `docs/evidence/PHASE_11.md` |
-| 12 | NOT_STARTED | |
+| 12 | READY_FOR_REVIEW | `docs/evidence/PHASE_12.md` |
 | 13 | NOT_STARTED | |
 | 14 | NOT_STARTED | |
 | 15 | NOT_STARTED | |

@@ -13,6 +13,7 @@ import type { ProjectileViewPoolStats } from './systems/projectile/PhaserProject
 import type { NPCViewPoolStats } from './systems/npc/PhaserNPCSystem';
 import type { ScoreState } from './domain/score/ScoreCalculator';
 import type { GameConfig } from './runtime/GameConfig';
+import type { LevelSession } from './domain/level/LevelDirector';
 
 declare global {
   interface Window {
@@ -29,6 +30,7 @@ declare global {
         readonly score: number;
         readonly alert: number;
         readonly inventory: number;
+        readonly level: number;
       };
       gameplayEvents?: readonly GameplayEvent[];
       score?: ScoreState;
@@ -41,6 +43,8 @@ declare global {
       hudPoopText?: string;
       hudAlertText?: string;
       hudBreakdownText?: string;
+      hudLevelText?: string;
+      hudResultText?: string;
       projectileSystem?: ProjectileSystemState;
       projectileViewPool?: ProjectileViewPoolStats;
       predictedLanding?: { readonly x: number; readonly y: number };
@@ -50,6 +54,8 @@ declare global {
       aimAssistVisible?: boolean;
       inputListenerCount?: number;
       debugOverlayVisible?: boolean;
+      levelSession?: LevelSession;
+      advanceLevelTime?: (seconds: number) => void;
       spawnNPCSandbox?: (npcType: string, x?: number) => void;
       clearNPCSandbox?: () => void;
     };

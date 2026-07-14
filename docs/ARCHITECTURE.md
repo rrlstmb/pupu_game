@@ -93,6 +93,16 @@ Unit tests target pure domain first. Integration tests validate adapter/event fl
 - Reaching `caught` latches the frame before later systems can mutate score, combo, or alert. Retry reinitializes RNG, NPCs, projectiles, hit tokens, events, score/combo, alert history, projectile wind/config, timers, and the caught latch.
 - GameScene shutdown owns EventBus unsubscription. Retry must preserve stable scene and EventBus listener counts rather than accumulating handlers.
 
+## Level Runtime
+
+- `LevelDefinition` is immutable JSON-compatible data loaded through runtime validation. Invalid definitions throw one diagnostic error before a session starts.
+- `LevelDirector` is a pure reducer for countdown, running, paused, and settled phases. It owns the level clock, objective completion latch, attempt/session id, metrics, outcome, and immutable result snapshot.
+- `ObjectiveSystem` evaluates the target score. `StarEvaluation` separately evaluates score, highest combo, and strict accuracy conditions; stars do not decide basic level success.
+- Every gameplay event carries the active LevelSession id. GameScene ignores scoring events from another session, and restart clears event/token collections before creating the next attempt.
+- HUD renders level and result snapshots received through the typed EventBus. It does not calculate score, accuracy, stars, or outcome.
+- Authored level spawn tables and available poop types override general sandbox content. Development sandboxes can still expose the full roster/arsenal without changing the authored Level 1 definition.
+- Retry increments the deterministic attempt id while preserving the level seed and reinitializing RNG, entities, timers, score/combo, alert, effects, listeners, and level metrics.
+
 ## Data-Driven Rules
 
 - Level duration, target score, spawn tables, lane definitions, weather, wind, unlocks, and star goals are data.

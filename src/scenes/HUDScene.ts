@@ -3,6 +3,7 @@ import { POOP_DEFINITIONS } from '../data/poopDefinitions';
 import { type AlertState, createAlertState } from '../domain/alert/AlertSystem';
 import { type PoopInventoryState, createPoopInventory, selectedSlot } from '../domain/poop/PoopInventory';
 import { type ScoreState, createScoreState } from '../domain/score/ScoreCalculator';
+import type { LevelSession } from '../domain/level/LevelDirector';
 import { eventBus } from '../runtime/EventBus';
 import { GAME_CONFIG } from '../runtime/GameConfig';
 import { GameEvents } from '../runtime/GameEvents';
@@ -13,11 +14,13 @@ export class HUDScene extends Phaser.Scene {
   private scoreText?: Phaser.GameObjects.Text;
   private poopText?: Phaser.GameObjects.Text;
   private alertText?: Phaser.GameObjects.Text;
+  private levelText?: Phaser.GameObjects.Text;
   private breakdownText?: Phaser.GameObjects.Text;
   private failureOverlay?: Phaser.GameObjects.Container;
   private scoreState: ScoreState = createScoreState();
   private poopInventory: PoopInventoryState = createPoopInventory(POOP_DEFINITIONS);
   private alertState: AlertState = createAlertState();
+  private levelSession?: LevelSession;
   private readonly scoreUpdated = (scoreState: ScoreState) => {
     this.scoreState = scoreState;
     this.renderScoreState();
@@ -29,6 +32,10 @@ export class HUDScene extends Phaser.Scene {
   private readonly poopInventoryUpdated = (poopInventory: PoopInventoryState) => {
     this.poopInventory = poopInventory;
     this.renderPoopInventory();
+  };
+  private readonly levelUpdated = (levelSession: LevelSession) => {
+    this.levelSession = levelSession;
+    this.renderLevelState();
   };
 
   constructor() {
@@ -72,11 +79,16 @@ export class HUDScene extends Phaser.Scene {
       })
       .setOrigin(1, 0)
       .setInteractive({ useHandCursor: true });
-    this.alertText.on(Phaser.Input.Events.POINTER_UP, () => {
-      if (this.alertState.isCaught || this.alertState.stage === 'caught') {
-        this.scene.get(SceneKeys.Game).scene.restart();
-      }
-    });
+    this.levelText = this.add
+      .text(GAME_CONFIG.width / 2, 20, '', {
+        fontFamily: 'monospace',
+        fontSize: '19px',
+        color: '#fef3c7',
+        backgroundColor: '#263238',
+        padding: { x: 12, y: 7 },
+        align: 'center'
+      })
+      .setOrigin(0.5, 0);
 
     const bounds = this.add
       .rectangle(GAME_CONFIG.width / 2, GAME_CONFIG.height / 2, GAME_CONFIG.width - 8, GAME_CONFIG.height - 8)
@@ -85,6 +97,7 @@ export class HUDScene extends Phaser.Scene {
     eventBus.on(GameEvents.ScoreUpdated, this.scoreUpdated);
     eventBus.on(GameEvents.AlertUpdated, this.alertUpdated);
     eventBus.on(GameEvents.PoopInventoryUpdated, this.poopInventoryUpdated);
+    eventBus.on(GameEvents.LevelUpdated, this.levelUpdated);
     this.renderScoreState();
     this.renderPoopInventory();
     this.renderAlertState();
@@ -93,12 +106,18 @@ export class HUDScene extends Phaser.Scene {
       eventBus.off(GameEvents.PoopInventoryUpdated, this.poopInventoryUpdated);
       eventBus.off(GameEvents.AlertUpdated, this.alertUpdated);
       eventBus.off(GameEvents.ScoreUpdated, this.scoreUpdated);
+      eventBus.off(GameEvents.LevelUpdated, this.levelUpdated);
       this.scoreText?.destroy();
       this.poopText?.destroy();
       this.alertText?.destroy();
       this.breakdownText?.destroy();
+      this.levelText?.destroy();
       this.failureOverlay?.destroy(true);
       bounds.destroy();
+      if (window.__SHIMING_BIDA_DEBUG__) {
+        delete window.__SHIMING_BIDA_DEBUG__.hudLevelText;
+        delete window.__SHIMING_BIDA_DEBUG__.hudResultText;
+      }
       emitSceneShutdown(this);
     });
   }
@@ -154,32 +173,75 @@ export class HUDScene extends Phaser.Scene {
     if (window.__SHIMING_BIDA_DEBUG__) {
       window.__SHIMING_BIDA_DEBUG__.hudAlertText = alertText;
     }
-    if (this.alertState.isCaught || this.alertState.stage === 'caught') {
-      this.renderFailureOverlay();
+  }
+
+  private renderLevelState(): void {
+    const session = this.levelSession;
+    if (!session) return;
+    const prefix = session.phase === 'countdown'
+      ? `倒數 ${Math.max(1, Math.ceil(session.countdownRemainingSeconds))}`
+      : session.phase === 'paused'
+        ? '已暫停'
+        : `時間 ${Math.ceil(session.remainingSeconds)}s`;
+    const text = `${session.definition.name}  ${prefix}\n目標 ${session.definition.targetScore}  seed ${session.definition.seed}`;
+    this.levelText?.setText(text);
+    if (window.__SHIMING_BIDA_DEBUG__) {
+      window.__SHIMING_BIDA_DEBUG__.hudLevelText = text;
+    }
+
+    if (session.phase === 'settled' && session.result) {
+      this.renderResultOverlay(session);
+    } else if (session.phase === 'paused') {
+      this.renderPauseOverlay();
     } else {
       this.failureOverlay?.destroy(true);
       this.failureOverlay = undefined;
     }
   }
 
-  private renderFailureOverlay(): void {
-    if (this.failureOverlay) {
-      return;
-    }
+  private renderPauseOverlay(): void {
+    if (this.failureOverlay?.getData('kind') === 'pause') return;
+    this.failureOverlay?.destroy(true);
+    const overlay = this.add.container(0, 0).setDepth(10_000).setData('kind', 'pause');
+    const panel = this.add.rectangle(0, 0, GAME_CONFIG.width, GAME_CONFIG.height, 0x111827, 0.62).setOrigin(0, 0);
+    const title = this.add.text(GAME_CONFIG.width / 2, GAME_CONFIG.height / 2, '已暫停\nEsc 繼續', {
+      fontFamily: 'sans-serif', fontSize: '38px', color: '#fef3c7', align: 'center'
+    }).setOrigin(0.5);
+    overlay.add([panel, title]);
+    this.failureOverlay = overlay;
+  }
 
-    const overlay = this.add.container(0, 0).setDepth(10_000);
+  private renderResultOverlay(session: LevelSession): void {
+    if (this.failureOverlay?.getData('sessionId') === session.id) return;
+    this.failureOverlay?.destroy(true);
+    const result = session.result!;
+
+    const overlay = this.add.container(0, 0).setDepth(10_000).setData('sessionId', session.id);
     const panel = this.add.rectangle(0, 0, GAME_CONFIG.width, GAME_CONFIG.height, 0x111827, 0.78).setOrigin(0, 0);
     const title = this.add
-      .text(GAME_CONFIG.width / 2, GAME_CONFIG.height * 0.38, '被抓包了！', {
+      .text(GAME_CONFIG.width / 2, 105, result.outcome === 'success' ? '任務成功' : result.outcome === 'caught' ? '被抓包了' : '時間到', {
         fontFamily: 'sans-serif',
-        fontSize: '44px',
+        fontSize: '42px',
         color: '#fef3c7',
-        backgroundColor: '#7f1d1d',
+        backgroundColor: result.outcome === 'success' ? '#166534' : '#7f1d1d',
         padding: { x: 18, y: 10 }
       })
       .setOrigin(0.5);
+    const summary = this.add.text(GAME_CONFIG.width / 2, 215, [
+      `總分 ${result.totalScore}    星級 ${result.stars.starsEarned}/3`,
+      `最高連擊 ${result.highestCombo}    命中率 ${(result.accuracy * 100).toFixed(1)}%`,
+      `命中 ${result.hitCount}    投擲 ${result.throwCount}`,
+      `seed ${result.seed}`
+    ].join('\n'), {
+      fontFamily: 'monospace', fontSize: '22px', color: '#f7f0dc', align: 'center', lineSpacing: 8
+    }).setOrigin(0.5, 0);
+    const stars = this.add.text(GAME_CONFIG.width / 2, 370, result.stars.conditions.map((condition) =>
+      `${condition.passed ? '[PASS]' : '[MISS]'} ${condition.label}`
+    ).join('\n'), {
+      fontFamily: 'monospace', fontSize: '20px', color: '#dbeafe', align: 'left', lineSpacing: 9
+    }).setOrigin(0.5, 0);
     const retry = this.add
-      .text(GAME_CONFIG.width / 2, GAME_CONFIG.height * 0.55, '重試', {
+      .text(GAME_CONFIG.width / 2 - 110, 590, '重試', {
         fontFamily: 'sans-serif',
         fontSize: '28px',
         color: '#111827',
@@ -188,11 +250,26 @@ export class HUDScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
+    retry.setData('role', 'retry-level');
+    const next = this.add
+      .text(GAME_CONFIG.width / 2 + 110, 590, '下一關', {
+        fontFamily: 'sans-serif', fontSize: '24px', color: '#9ca3af', backgroundColor: '#374151', padding: { x: 22, y: 11 }
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true })
+      .setData('role', 'next-level-placeholder');
+    const nextStatus = this.add.text(GAME_CONFIG.width / 2, 645, '下一關尚未開放', {
+      fontFamily: 'monospace', fontSize: '17px', color: '#9ca3af'
+    }).setOrigin(0.5).setVisible(false);
 
     retry.on(Phaser.Input.Events.POINTER_UP, () => {
       this.scene.get(SceneKeys.Game).scene.restart();
     });
-    overlay.add([panel, title, retry]);
+    next.on(Phaser.Input.Events.POINTER_UP, () => nextStatus.setVisible(true));
+    overlay.add([panel, title, summary, stars, retry, next, nextStatus]);
     this.failureOverlay = overlay;
+    if (window.__SHIMING_BIDA_DEBUG__) {
+      window.__SHIMING_BIDA_DEBUG__.hudResultText = `${title.text}\n${summary.text}\n${stars.text}`;
+    }
   }
 }

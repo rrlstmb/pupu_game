@@ -9,6 +9,7 @@ export const GameplayEventTypes = {
 
 export type GameplayEvent =
   | {
+      readonly sessionId: string;
       readonly type: typeof GameplayEventTypes.ProjectileHit;
       readonly token: string;
       readonly projectileId: number;
@@ -22,6 +23,7 @@ export type GameplayEvent =
       readonly interactionScoreDelta: number;
     }
   | {
+      readonly sessionId: string;
       readonly type: typeof GameplayEventTypes.NPCRantStarted;
       readonly eventId: string;
       readonly poopType: PoopType;
@@ -33,6 +35,7 @@ export type GameplayEvent =
       readonly interactionScoreDelta: number;
     }
   | {
+      readonly sessionId: string;
       readonly type: typeof GameplayEventTypes.NPCRecovered;
       readonly npcId: number;
       readonly npcType: NPCType;
@@ -41,7 +44,8 @@ export type GameplayEvent =
 
 export function collectNPCStateTransitionEvents(
   previousNpcs: readonly NPCInstanceState[],
-  nextNpcs: readonly NPCInstanceState[]
+  nextNpcs: readonly NPCInstanceState[],
+  sessionId = 'legacy-session'
 ): readonly GameplayEvent[] {
   const events: GameplayEvent[] = [];
 
@@ -53,6 +57,7 @@ export function collectNPCStateTransitionEvents(
 
     if (previous.state === 'Hit' && next.state === 'Ranting' && previous.pendingRant) {
       events.push({
+        sessionId,
         type: GameplayEventTypes.NPCRantStarted,
         eventId: previous.pendingRant.eventId,
         poopType: previous.pendingRant.poopType,
@@ -71,6 +76,7 @@ export function collectNPCStateTransitionEvents(
       (next.state === 'Walking' || next.state === 'Distracted')
     ) {
       events.push({
+        sessionId,
         type: GameplayEventTypes.NPCRecovered,
         npcId: next.id,
         npcType: next.definitionId,
