@@ -11,6 +11,7 @@ import {
   type ProjectileConfig
 } from '../data/projectileConfig';
 import { SCORE_RULES } from '../data/scoreRules';
+import { NPC_AREA_EFFECT_RESISTANCE } from '../data/npcAreaEffectResistance';
 import {
   applyAlertDelta,
   createAlertState,
@@ -30,6 +31,7 @@ import {
 import { Depths } from '../domain/layout/Depth';
 import {
   createLevelSession,
+  activeEventForChannel,
   failLevelCaught,
   spawnConfigForLevel,
   toggleLevelPause,
@@ -44,13 +46,20 @@ import type { NPCSpawnerState, NPCSpawnConfig } from '../domain/npc/NPCModel';
 import { createInitialPlayerState, updatePlayerMovement, type PlayerState } from '../domain/player/PlayerMovement';
 import {
   alertIncreaseFromZones,
-  applyEnvironmentalEffectsToNPCs,
-  clearEnvironmentalEffectsNearNPCs,
+  applyAreaEffectsToNPCs,
+  clearEnvironmentalEffectsByIds,
   createEnvironmentalEffectState,
   createStinkZone,
+  markZonesBeingCleaned,
   updateEnvironmentalEffects,
   type EnvironmentalEffectState
 } from '../domain/poop/EnvironmentalEffectZone';
+import {
+  createCleanerSystemState,
+  startCleanupTruck,
+  updateCleanerSystem,
+  type CleanerSystemState
+} from '../domain/poop/CleanerSystem';
 import {
   canUseSelectedPoop,
   consumeSelectedPoop,
@@ -112,6 +121,7 @@ export class GameScene extends Phaser.Scene {
   private alertState: AlertState = createAlertState();
   private poopInventory: PoopInventoryState = createPoopInventory(POOP_DEFINITIONS);
   private environmentalEffects: EnvironmentalEffectState = createEnvironmentalEffectState();
+  private cleanerState: CleanerSystemState = createCleanerSystemState();
   private projectileConfig: ProjectileConfig = NORMAL_POOP_PROJECTILE_CONFIG;
   private chargeState: ChargeState = createChargeState();
   private lastLandingHitDebug?: {
@@ -128,6 +138,7 @@ export class GameScene extends Phaser.Scene {
   private readonly scrollingLayers: Array<{ sprite: Phaser.GameObjects.TileSprite; factor: number }> = [];
   private debugOverlay?: Phaser.GameObjects.Container;
   private readonly zoneViews = new Map<string, Phaser.GameObjects.Arc>();
+  private cleanupStatusText?: Phaser.GameObjects.Text;
   private debugOverlayVisible = false;
 
   constructor() {
@@ -149,6 +160,7 @@ export class GameScene extends Phaser.Scene {
     this.scoreState = createScoreState();
     this.poopInventory = createPoopInventory(levelPoopDefinitions);
     this.environmentalEffects = createEnvironmentalEffectState();
+    this.cleanerState = createCleanerSystemState();
     this.projectileConfig = NORMAL_POOP_PROJECTILE_CONFIG;
     this.chargeState = createChargeState();
     this.windState = CALM_WIND_STATE;
@@ -174,6 +186,9 @@ export class GameScene extends Phaser.Scene {
     this.scene.launch(SceneKeys.HUD);
 
     this.renderWorldLayout(this.layout);
+    this.cleanupStatusText = this.add.text(GAME_CONFIG.width / 2, 150, '', {
+      fontFamily: 'monospace', fontSize: '22px', color: '#ecfccb', backgroundColor: '#365314', padding: { x: 12, y: 7 }
+    }).setOrigin(0.5).setDepth(Depths.hud).setVisible(false);
     this.renderPlayer();
     this.setDebugState();
 
@@ -282,6 +297,8 @@ export class GameScene extends Phaser.Scene {
         view.destroy();
       }
       this.zoneViews.clear();
+      this.cleanupStatusText?.destroy();
+      this.cleanupStatusText = undefined;
       this.scene.stop(SceneKeys.HUD);
       this.clearDebugState();
       emitSceneShutdown(this);
@@ -355,10 +372,20 @@ export class GameScene extends Phaser.Scene {
       this.applyGameplayEventsToScore(transitionEvents);
     }
     this.environmentalEffects = updateEnvironmentalEffects(this.environmentalEffects, deltaSeconds);
-    this.npcSpawnerState = {
-      ...this.npcSpawnerState,
-      npcs: applyEnvironmentalEffectsToNPCs(this.npcSpawnerState.npcs, this.environmentalEffects.zones)
-    };
+    this.updateCleanupSystems(deltaSeconds);
+    const areaUpdate = applyAreaEffectsToNPCs(
+      this.environmentalEffects, this.npcSpawnerState.npcs, NPC_AREA_EFFECT_RESISTANCE
+    );
+    this.environmentalEffects = areaUpdate.state;
+    this.npcSpawnerState = { ...this.npcSpawnerState, npcs: areaUpdate.npcs };
+    if (areaUpdate.newlyAffected.length > 0) {
+      this.levelSession = updateLevelMetrics(this.levelSession, {
+        zoneAffectedNpcCount: this.environmentalEffects.stats.affectedNpcCount,
+        maxNpcAffectedBySingleZone: this.environmentalEffects.stats.maxAffectedBySingleZone
+      });
+      const alertCost = areaUpdate.newlyAffected.length * (this.levelDefinition.areaZone?.alertCostPerAffectedNpc ?? 0);
+      if (alertCost > 0) this.alertState = applyAlertDelta(this.alertState, alertCost, 'stink_zone', ALERT_RULES);
+    }
     const stinkAlertIncrease = alertIncreaseFromZones(this.environmentalEffects.zones, deltaSeconds);
     if (stinkAlertIncrease > 0) {
       this.alertState = applyAlertDelta(this.alertState, stinkAlertIncrease, 'stink_zone', ALERT_RULES);
@@ -367,7 +394,6 @@ export class GameScene extends Phaser.Scene {
     if (npcAlertPulse > 0) {
       this.alertState = applyAlertDelta(this.alertState, npcAlertPulse, 'npc_danger', ALERT_RULES);
     }
-    this.clearZonesByCleaners();
     if (this.stopFrameIfCaught()) {
       return;
     }
@@ -669,18 +695,46 @@ export class GameScene extends Phaser.Scene {
   private createZoneFromProjectile(projectile: Projectile, position: Vector2): void {
     const definition = poopDefinitionById(projectile.poopType);
     if (definition.capability.kind === 'stink') {
-      this.environmentalEffects = createStinkZone(this.environmentalEffects, definition, position);
+      const createdBefore = this.environmentalEffects.stats.createdCount;
+      this.environmentalEffects = createStinkZone(
+        this.environmentalEffects, definition, position, this.levelDefinition.areaZone, projectile.id
+      );
+      if (this.environmentalEffects.stats.createdCount > createdBefore) {
+        const alertCost = this.levelDefinition.areaZone?.alertCostOnCreate ?? 0;
+        if (alertCost > 0) this.alertState = applyAlertDelta(this.alertState, alertCost, 'stink_zone', ALERT_RULES);
+      }
     }
   }
 
-  private clearZonesByCleaners(): void {
-    const cleaners = this.npcSpawnerState.npcs
-      .filter((npc) => npc.state === 'Cleaning')
-      .map((npc) => ({ x: npc.x, y: npc.y, radius: 145 }));
-    if (cleaners.length === 0 || this.environmentalEffects.zones.length === 0) {
-      return;
+  private updateCleanupSystems(deltaSeconds: number): void {
+    const rules = this.levelDefinition.cleaner;
+    if (!rules) return;
+    const cleanupEvent = activeEventForChannel(this.levelDefinition, this.levelSession!, 'cleanupChannel');
+    if (cleanupEvent?.cleanup) {
+      this.cleanerState = startCleanupTruck(this.cleanerState, cleanupEvent.id, cleanupEvent.cleanup);
     }
-    this.environmentalEffects = clearEnvironmentalEffectsNearNPCs(this.environmentalEffects, cleaners);
+    const update = updateCleanerSystem(
+      this.cleanerState,
+      this.npcSpawnerState.npcs.filter((npc) => npc.definitionId === 'cleaner'),
+      this.environmentalEffects.zones,
+      rules,
+      deltaSeconds,
+      cleanupEvent?.cleanup
+    );
+    this.cleanerState = update.state;
+    this.environmentalEffects = markZonesBeingCleaned(this.environmentalEffects, update.zoneIdsBeingCleaned);
+    this.environmentalEffects = clearEnvironmentalEffectsByIds(this.environmentalEffects, update.zoneIdsToClear);
+    const cleaningIds = new Set(update.cleaningNpcIds);
+    this.npcSpawnerState = {
+      ...this.npcSpawnerState,
+      npcs: this.npcSpawnerState.npcs.map((npc) => cleaningIds.has(npc.id)
+        ? { ...npc, state: 'Cleaning' as const, currentSpeed: 0 }
+        : npc)
+    };
+    const truck = this.cleanerState.truck;
+    this.cleanupStatusText?.setVisible(Boolean(truck && truck.phase !== 'complete')).setText(
+      truck ? `${truck.phase === 'warning' ? '清潔車預告' : truck.phase === 'delay' ? '清潔車掃街中' : ''} ${Math.ceil(truck.remainingSeconds)}s` : ''
+    );
   }
 
   private syncZoneViews(): void {
@@ -696,6 +750,7 @@ export class GameScene extends Phaser.Scene {
       const existing = this.zoneViews.get(zone.id);
       if (existing) {
         existing.setAlpha(0.18 + Math.min(0.3, zone.remainingSeconds / 12));
+        existing.setFillStyle(zone.state === 'being_cleaned' ? 0xfacc15 : 0x84cc16, 0.28);
         continue;
       }
       const view = this.add
@@ -712,6 +767,7 @@ export class GameScene extends Phaser.Scene {
     this.renderLanes(layout.lanes);
     this.renderRooftop(layout);
     this.renderWeather(layout);
+    this.renderCleanupDayDecorations(layout);
     this.renderBounceSurfaces();
     this.renderDebugOverlay(layout);
   }
@@ -725,6 +781,19 @@ export class GameScene extends Phaser.Scene {
       this.add.line(0, 0, x, y, x - 9, y + 28, weather.streakColor, weather.streakAlpha)
         .setOrigin(0, 0)
         .setDepth(Depths.particles - 2);
+    }
+  }
+
+  private renderCleanupDayDecorations(layout: WorldLayout): void {
+    if (this.levelDefinition.visual.profile !== 'cleanup_day') return;
+    const depth = Depths.alleyBack + 12;
+    this.add.text(layout.width / 2, layout.zones[0].height + 18, '城市清潔日  CLEAN STREET DAY', {
+      fontFamily: 'monospace', fontSize: '20px', color: '#ecfccb', backgroundColor: '#3f6212', padding: { x: 14, y: 6 }
+    }).setOrigin(0.5, 0).setDepth(depth);
+    for (const x of [115, layout.width - 115]) {
+      this.add.rectangle(x, layout.lanes[1].y, 42, 58, 0x166534, 0.9).setDepth(depth);
+      this.add.text(x, layout.lanes[1].y, 'BIN', { fontFamily: 'monospace', fontSize: '12px', color: '#dcfce7' })
+        .setOrigin(0.5).setDepth(depth + 1);
     }
   }
 
@@ -1028,6 +1097,7 @@ export class GameScene extends Phaser.Scene {
     window.__SHIMING_BIDA_DEBUG__.alert = this.alertState;
     window.__SHIMING_BIDA_DEBUG__.poopInventory = this.poopInventory;
     window.__SHIMING_BIDA_DEBUG__.environmentalEffects = this.environmentalEffects;
+    window.__SHIMING_BIDA_DEBUG__.cleanerSystem = this.cleanerState;
     window.__SHIMING_BIDA_DEBUG__.isGameOver = this.isGameOver;
     window.__SHIMING_BIDA_DEBUG__.isPlayerInCover = this.isPlayerInCover();
     window.__SHIMING_BIDA_DEBUG__.projectileSystem = this.projectileSystem.snapshot();
@@ -1116,6 +1186,7 @@ export class GameScene extends Phaser.Scene {
     delete debug.alert;
     delete debug.poopInventory;
     delete debug.environmentalEffects;
+    delete debug.cleanerSystem;
     delete debug.isGameOver;
     delete debug.isPlayerInCover;
     delete debug.projectileSystem;

@@ -762,6 +762,42 @@ test('phase 10 arsenal sandbox demonstrates eight tactical poop types without le
   await page.screenshot({ path: 'docs/evidence/phase-10-arsenal-sandbox.png', fullPage: true });
 });
 
+test('phase 17 level 6 creates controlled stink zones and cleans them with warning', async ({ page }) => {
+  test.setTimeout(75_000);
+  await page.goto('/');
+  await expect(page.locator('canvas')).toHaveAttribute('data-game-ready', 'true');
+  const box = await page.locator('canvas').boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(box!.x + box!.width * (240 / 1280), box!.y + box!.height * (645 / 720));
+  await expect.poll(() => activeScenes(page)).toContain('GameScene');
+  await startLevelForTest(page);
+  await expect.poll(async () => (await levelSession(page)).definition.id).toBe('level_06');
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.clearNPCSandbox?.(true));
+  await page.keyboard.press('KeyE');
+  await expect.poll(() => hudPoopText(page)).toContain('臭氣便');
+
+  await chargeThrow(page, 0.5);
+  await expect.poll(async () => (await environmentalEffects(page)).activeCount, { timeout: 8_000 }).toBe(1);
+  const zone = (await environmentalEffects(page)).zones[0];
+  await page.evaluate(({ x }) => window.__SHIMING_BIDA_DEBUG__?.spawnNPCSandbox?.('office_worker', x, 'mid_sidewalk'), { x: zone.x });
+  await expect.poll(async () => (await environmentalEffects(page)).affectedNpcCount, { timeout: 5_000 }).toBeGreaterThanOrEqual(1);
+  await page.evaluate(({ x }) => window.__SHIMING_BIDA_DEBUG__?.spawnNPCSandbox?.('cleaner', x, 'mid_sidewalk'), { x: zone.x });
+  await expect.poll(async () => (await cleanerSystem(page)).locks.length, { timeout: 5_000 }).toBe(1);
+  expect((await cleanerSystem(page)).locks[0].phase).toMatch(/warning|cleaning/);
+  await expect.poll(async () => (await environmentalEffects(page)).activeCount, { timeout: 8_000 }).toBe(0);
+
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.clearNPCSandbox?.(true));
+  await page.waitForTimeout(1400);
+  await chargeThrow(page, 0.25);
+  await expect.poll(async () => (await environmentalEffects(page)).activeCount, { timeout: 8_000 }).toBe(1);
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.advanceLevelTime?.(96));
+  await expect.poll(async () => (await cleanerSystem(page)).truck?.phase, { timeout: 4_000 }).toBe('warning');
+  await expect.poll(async () => (await environmentalEffects(page)).activeCount, { timeout: 12_000 }).toBe(0);
+  expect((await levelSession(page)).triggeredEventIds.filter((id) => id === 'cleanup_truck')).toHaveLength(1);
+  expect(await page.locator('canvas').getAttribute('data-game-ready')).toBe('true');
+  await page.screenshot({ path: 'docs/evidence/phase-17-cleanup-day.png', fullPage: true });
+});
+
 test('phase 11 npc sandbox spawns complete roster with visible tactical states', async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto('/');
@@ -878,7 +914,8 @@ test('phase 12 runs Level 1 through pause, timeout result, and deterministic cle
   expect(retried.definition.seed).toBe(settled.definition.seed);
   expect(retried.metrics).toEqual({
     totalScore: 0, highestCombo: 0, hitCount: 0, throwCount: 0,
-    npcHitCounts: {}, interactionCounts: {}, maxSplashTargetsHit: 0
+    npcHitCounts: {}, interactionCounts: {}, maxSplashTargetsHit: 0,
+    zoneAffectedNpcCount: 0, maxNpcAffectedBySingleZone: 0
   });
   expect((await npcSpawner(page)).npcs).toHaveLength(0);
   expect((await projectileSystem(page)).projectiles).toHaveLength(0);
@@ -1656,6 +1693,8 @@ async function environmentalEffects(page: Page): Promise<{
   activeCount: number;
   createdCount: number;
   recycledCount: number;
+  affectedNpcCount: number;
+  zones: Array<{ id: string; x: number; y: number; state: string }>;
 }> {
   return page.evaluate(() => {
     const state = window.__SHIMING_BIDA_DEBUG__?.environmentalEffects;
@@ -1666,8 +1705,21 @@ async function environmentalEffects(page: Page): Promise<{
     return {
       activeCount: state.stats.activeCount,
       createdCount: state.stats.createdCount,
-      recycledCount: state.stats.recycledCount
+      recycledCount: state.stats.recycledCount,
+      affectedNpcCount: state.stats.affectedNpcCount ?? 0,
+      zones: state.zones.map((zone) => ({ id: zone.id, x: zone.x, y: zone.y, state: zone.state }))
     };
+  });
+}
+
+async function cleanerSystem(page: Page): Promise<{
+  locks: Array<{ cleanerId: number; zoneId: string; phase: string; remainingSeconds: number }>;
+  truck?: { eventId: string; phase: string; remainingSeconds: number };
+}> {
+  return page.evaluate(() => {
+    const state = window.__SHIMING_BIDA_DEBUG__?.cleanerSystem;
+    if (!state) throw new Error('Cleaner system debug state is not available');
+    return { locks: [...state.locks], truck: state.truck ? { ...state.truck } : undefined };
   });
 }
 

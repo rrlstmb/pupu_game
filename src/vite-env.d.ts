@@ -16,6 +16,7 @@ import type { ScoreState } from './domain/score/ScoreCalculator';
 import type { GameConfig } from './runtime/GameConfig';
 import type { LevelSession } from './domain/level/LevelDirector';
 import type { WindState } from './domain/wind/WindSystem';
+import type { CleanerSystemState } from './domain/poop/CleanerSystem';
 
 declare global {
   interface Window {
@@ -39,6 +40,7 @@ declare global {
       alert?: AlertState;
       poopInventory?: PoopInventoryState;
       environmentalEffects?: EnvironmentalEffectState;
+      cleanerSystem?: CleanerSystemState;
       isGameOver?: boolean;
       isPlayerInCover?: boolean;
       hudScoreText?: string;

@@ -8,6 +8,7 @@ import { LEVEL_02 } from '../data/levels/level02';
 import { LEVEL_03 } from '../data/levels/level03';
 import { LEVEL_04 } from '../data/levels/level04';
 import { LEVEL_05 } from '../data/levels/level05';
+import { LEVEL_06 } from '../data/levels/level06';
 import { eventBus } from '../runtime/EventBus';
 import { GAME_CONFIG } from '../runtime/GameConfig';
 import { GameEvents } from '../runtime/GameEvents';
@@ -259,7 +260,8 @@ export class HUDScene extends Phaser.Scene {
       ? LEVEL_02
       : session.definition.id === 'level_02' ? LEVEL_03
         : session.definition.id === 'level_03' ? LEVEL_04
-          : session.definition.id === 'level_04' ? LEVEL_05 : undefined;
+          : session.definition.id === 'level_04' ? LEVEL_05
+            : session.definition.id === 'level_05' ? LEVEL_06 : undefined;
     const hasNextLevel = nextLevel !== undefined;
     const next = this.add
       .text(GAME_CONFIG.width / 2 + 110, 590, '下一關', {

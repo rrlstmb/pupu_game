@@ -68,6 +68,7 @@ export type ProjectilePoopRules = {
 
 export type EnvironmentalEffectZone = {
   readonly id: string;
+  readonly sourceProjectileId?: number;
   readonly poopType: PoopType;
   readonly x: number;
   readonly y: number;
@@ -75,12 +76,38 @@ export type EnvironmentalEffectZone = {
   readonly remainingSeconds: number;
   readonly slowMultiplier: number;
   readonly alertPerSecond: number;
+  readonly createdOrder: number;
+  readonly affectedNpcIds: readonly number[];
+  readonly state: 'active' | 'being_cleaned';
 };
 
 export type EnvironmentalEffectStats = {
   readonly createdCount: number;
   readonly recycledCount: number;
   readonly activeCount: number;
+  readonly affectedNpcCount?: number;
+  readonly maxAffectedBySingleZone?: number;
+  readonly naturallyExpiredCount?: number;
+  readonly clearedCount?: number;
+};
+
+export type AreaEffectZoneRules = {
+  readonly radius: number;
+  readonly durationSeconds: number;
+  readonly maxActiveZones: number;
+  readonly stackingRule: 'refresh' | 'replace' | 'reject';
+  readonly npcEffect: 'slow';
+  readonly effectStrength: number;
+  readonly alertCostOnCreate: number;
+  readonly alertCostPerAffectedNpc: number;
+  readonly reenterCounts: false;
+};
+
+export type NpcAreaEffectResistance = {
+  readonly npcType: string;
+  readonly stinkResistance: number;
+  readonly minimumSlowMultiplier: number;
+  readonly canReroute: boolean;
 };
 
 export type EffectStackingPolicy = {

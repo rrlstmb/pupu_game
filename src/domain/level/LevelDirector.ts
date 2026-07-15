@@ -60,7 +60,8 @@ export function createLevelSession(definition: LevelDefinition, attempt = 1): Le
     remainingSeconds: definition.durationSeconds,
     metrics: {
       totalScore: 0, highestCombo: 0, hitCount: 0, throwCount: 0,
-      npcHitCounts: {}, interactionCounts: {}, maxSplashTargetsHit: 0
+      npcHitCounts: {}, interactionCounts: {}, maxSplashTargetsHit: 0,
+      zoneAffectedNpcCount: 0, maxNpcAffectedBySingleZone: 0
     },
     completionCount: 0,
     triggeredEventIds: []
@@ -104,7 +105,9 @@ export function updateLevelMetrics(session: LevelSession, metrics: Partial<Level
       throwCount: metrics.throwCount ?? session.metrics.throwCount,
       npcHitCounts: metrics.npcHitCounts ?? session.metrics.npcHitCounts,
       interactionCounts: metrics.interactionCounts ?? session.metrics.interactionCounts,
-      maxSplashTargetsHit: Math.max(session.metrics.maxSplashTargetsHit ?? 0, metrics.maxSplashTargetsHit ?? 0)
+      maxSplashTargetsHit: Math.max(session.metrics.maxSplashTargetsHit ?? 0, metrics.maxSplashTargetsHit ?? 0),
+      zoneAffectedNpcCount: metrics.zoneAffectedNpcCount ?? session.metrics.zoneAffectedNpcCount,
+      maxNpcAffectedBySingleZone: Math.max(session.metrics.maxNpcAffectedBySingleZone ?? 0, metrics.maxNpcAffectedBySingleZone ?? 0)
     }
   };
   return evaluateObjective(updated.definition, updated.metrics).complete ? settleLevel(updated, 'success') : updated;

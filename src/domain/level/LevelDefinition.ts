@@ -1,6 +1,7 @@
 import type { LaneId } from '../layout/WorldLayout';
 import type { NPCType } from '../npc/NPCModel';
 import type { PoopType } from '../poop/PoopModel';
+import type { AreaEffectZoneRules } from '../poop/PoopModel';
 
 export type LevelSpawnDefinition = {
   readonly intervalSeconds: number;
@@ -12,7 +13,7 @@ export type LevelSpawnDefinition = {
 };
 
 export type LevelVisualDefinition = {
-  readonly profile: 'day' | 'evening' | 'rainy' | 'market_evening' | 'windy_afternoon';
+  readonly profile: 'day' | 'evening' | 'rainy' | 'market_evening' | 'windy_afternoon' | 'cleanup_day';
   readonly skylineColor: number;
   readonly alleyColor: number;
   readonly rooftopColor: number;
@@ -52,7 +53,20 @@ export type BounceSurfaceDefinition = {
   readonly bounceCoefficient: number;
 };
 
-export type EventChannel = 'spawnChannel' | 'windChannel' | 'presentationChannel' | 'hazardChannel';
+export type EventChannel = 'spawnChannel' | 'windChannel' | 'presentationChannel' | 'hazardChannel' | 'cleanupChannel';
+
+export type CleanerRules = {
+  readonly detectionRadius: number;
+  readonly warningSeconds: number;
+  readonly cleaningDurationSeconds: number;
+  readonly maxConcurrentLocks: number;
+};
+
+export type CleanupEventDefinition = {
+  readonly mode: 'all_active_zones';
+  readonly warningSeconds: number;
+  readonly clearDelaySeconds: number;
+};
 
 export type LevelTimedEvent = {
   readonly id: string;
@@ -64,6 +78,7 @@ export type LevelTimedEvent = {
   readonly spawn?: LevelSpawnDefinition;
   readonly windSegmentId?: string;
   readonly presentationCue?: string;
+  readonly cleanup?: CleanupEventDefinition;
 };
 
 export type LevelStarCondition =
@@ -72,7 +87,8 @@ export type LevelStarCondition =
   | { readonly id: 'accuracy_target'; readonly label: string; readonly minimumExclusive: number }
   | { readonly id: 'npc_hit_target'; readonly label: string; readonly npcTypes: readonly NPCType[]; readonly targetHits: number }
   | { readonly id: 'interaction_target'; readonly label: string; readonly interactionTag: string; readonly targetCount: number }
-  | { readonly id: 'splash_multi_hit_target'; readonly label: string; readonly targetCount: number };
+  | { readonly id: 'splash_multi_hit_target'; readonly label: string; readonly targetCount: number }
+  | { readonly id: 'area_zone_target'; readonly label: string; readonly mode: 'cumulative' | 'single_zone'; readonly targetCount: number };
 
 export type LevelDefinition = {
   readonly id: string;
@@ -88,6 +104,8 @@ export type LevelDefinition = {
   readonly events: readonly LevelTimedEvent[];
   readonly wind?: LevelWindDefinition;
   readonly bounceSurfaces?: readonly BounceSurfaceDefinition[];
+  readonly areaZone?: AreaEffectZoneRules;
+  readonly cleaner?: CleanerRules;
   readonly stars: readonly LevelStarCondition[];
 };
 
@@ -131,6 +149,8 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
   validateEvents(input.events, input.durationSeconds, errors);
   validateWind(input.wind, input.durationSeconds, errors);
   validateBounceSurfaces(input.bounceSurfaces, errors);
+  validateAreaZone(input.areaZone, errors);
+  validateCleaner(input.cleaner, errors);
   validateStars(input.stars, errors);
   validateScoreTargetConsistency(input, errors);
   return errors.length > 0
@@ -180,7 +200,7 @@ function validateStars(input: unknown, errors: string[]): void {
   }
   const ids = input.filter(isRecord).map((condition) => condition.id);
   const allowedIds: readonly LevelStarCondition['id'][] = [
-    'score_target', 'combo_target', 'accuracy_target', 'npc_hit_target', 'interaction_target', 'splash_multi_hit_target'
+    'score_target', 'combo_target', 'accuracy_target', 'npc_hit_target', 'interaction_target', 'splash_multi_hit_target', 'area_zone_target'
   ];
   if (new Set(ids).size !== 3 || !ids.includes('score_target') || ids.some((id) => !allowedIds.includes(id as LevelStarCondition['id']))) {
     errors.push('stars must define three unique conditions including score_target');
@@ -207,12 +227,15 @@ function validateStars(input: unknown, errors: string[]): void {
       errors.push('interaction_target requires a tag and positive targetCount');
     } else if (condition.id === 'splash_multi_hit_target' && !isPositiveInteger(condition.targetCount)) {
       errors.push('splash_multi_hit_target.targetCount must be a positive integer');
+    } else if (condition.id === 'area_zone_target' &&
+      (!['cumulative', 'single_zone'].includes(String(condition.mode)) || !isPositiveInteger(condition.targetCount))) {
+      errors.push('area_zone_target requires a mode and positive targetCount');
     }
   }
 }
 
 function validateVisual(input: unknown, errors: string[]): void {
-  if (!isRecord(input) || !['day', 'evening', 'rainy', 'market_evening', 'windy_afternoon'].includes(String(input.profile))) {
+  if (!isRecord(input) || !['day', 'evening', 'rainy', 'market_evening', 'windy_afternoon', 'cleanup_day'].includes(String(input.profile))) {
     errors.push('visual must define a supported profile');
     return;
   }
@@ -244,7 +267,7 @@ function validateEvents(input: unknown, duration: unknown, errors: string[]): vo
       event.triggerAtRemainingSeconds < 0 || typeof duration !== 'number' || event.triggerAtRemainingSeconds >= duration) {
       errors.push(`${event.id} must be once and trigger within the level duration`);
     }
-    if (!['spawnChannel', 'windChannel', 'presentationChannel', 'hazardChannel'].includes(String(event.channel)) ||
+    if (!['spawnChannel', 'windChannel', 'presentationChannel', 'hazardChannel', 'cleanupChannel'].includes(String(event.channel)) ||
       !['replace', 'merge', 'exclusive'].includes(String(event.mergeStrategy)) || !Number.isInteger(event.priority)) {
       errors.push(`${event.id} must define channel, integer priority, and mergeStrategy`);
     }
@@ -252,6 +275,29 @@ function validateEvents(input: unknown, duration: unknown, errors: string[]): vo
     if (event.channel === 'windChannel' && (typeof event.windSegmentId !== 'string' || event.windSegmentId === '')) {
       errors.push(`${event.id} windChannel requires windSegmentId`);
     }
+    if (event.channel === 'cleanupChannel' && (!isRecord(event.cleanup) || event.cleanup.mode !== 'all_active_zones' ||
+      !isPositiveNumber(event.cleanup.warningSeconds) || !isPositiveNumber(event.cleanup.clearDelaySeconds))) {
+      errors.push(`${event.id} cleanupChannel requires a valid cleanup definition`);
+    }
+  }
+}
+
+function validateAreaZone(input: unknown, errors: string[]): void {
+  if (input === undefined) return;
+  if (!isRecord(input) || !isPositiveNumber(input.radius) || !isPositiveNumber(input.durationSeconds) ||
+    !isPositiveInteger(input.maxActiveZones) || !['refresh', 'replace', 'reject'].includes(String(input.stackingRule)) ||
+    input.npcEffect !== 'slow' || typeof input.effectStrength !== 'number' || input.effectStrength <= 0 || input.effectStrength > 1 ||
+    typeof input.alertCostOnCreate !== 'number' || input.alertCostOnCreate < 0 ||
+    typeof input.alertCostPerAffectedNpc !== 'number' || input.alertCostPerAffectedNpc < 0 || input.reenterCounts !== false) {
+    errors.push('areaZone must define bounded lifecycle, stacking, slow effect, alert costs, and dedupe');
+  }
+}
+
+function validateCleaner(input: unknown, errors: string[]): void {
+  if (input === undefined) return;
+  if (!isRecord(input) || !isPositiveNumber(input.detectionRadius) || !isPositiveNumber(input.warningSeconds) ||
+    !isPositiveNumber(input.cleaningDurationSeconds) || !isPositiveInteger(input.maxConcurrentLocks)) {
+    errors.push('cleaner must define detection, warning, duration, and lock limit');
   }
 }
 

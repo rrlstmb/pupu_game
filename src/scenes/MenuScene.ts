@@ -4,6 +4,7 @@ import { LEVEL_02 } from '../data/levels/level02';
 import { LEVEL_03 } from '../data/levels/level03';
 import { LEVEL_04 } from '../data/levels/level04';
 import { LEVEL_05 } from '../data/levels/level05';
+import { LEVEL_06 } from '../data/levels/level06';
 import type { LevelDefinition } from '../domain/level/LevelDefinition';
 import { eventBus } from '../runtime/EventBus';
 import { GameEvents } from '../runtime/GameEvents';
@@ -40,6 +41,7 @@ export class MenuScene extends Phaser.Scene {
     const levelThreeButton = this.createLevelButton(GAME_CONFIG.width / 2, 560, '第 3 關：雨傘防線', LEVEL_03, 'start-level-03');
     const levelFourButton = this.createLevelButton(GAME_CONFIG.width / 2, 645, '第 4 關：市場散場', LEVEL_04, 'start-level-04');
     const levelFiveButton = this.createLevelButton(1040, 645, '第 5 關：逆風投遞', LEVEL_05, 'start-level-05');
+    const levelSixButton = this.createLevelButton(240, 645, '第 6 關：清潔大作戰', LEVEL_06, 'start-level-06');
 
     this.add
       .text(GAME_CONFIG.width / 2, 320, '選擇關卡', {
@@ -55,6 +57,7 @@ export class MenuScene extends Phaser.Scene {
       levelThreeButton.removeAllListeners();
       levelFourButton.removeAllListeners();
       levelFiveButton.removeAllListeners();
+      levelSixButton.removeAllListeners();
       title.destroy();
       subtitle.destroy();
       startButton.destroy();
@@ -62,6 +65,7 @@ export class MenuScene extends Phaser.Scene {
       levelThreeButton.destroy();
       levelFourButton.destroy();
       levelFiveButton.destroy();
+      levelSixButton.destroy();
       emitSceneShutdown(this);
     });
   }
