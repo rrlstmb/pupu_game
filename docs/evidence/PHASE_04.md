@@ -111,3 +111,9 @@ These are stored in `tests/unit/ProjectileTrajectory.test.ts`.
 - A subsequent manual review replaced press-to-fire diagonal throws with Space hold/release charging along the player's X.
 - Production trajectory helpers are disabled; a bottom-center charge meter communicates depth power.
 - Evidence and Gate C regression commands: `docs/evidence/PHASE_04_CHARGED_THROW_FIX.md`.
+
+## Charge Meter and Distance Mapping Patch
+
+- The meter now uses a non-zero fill geometry and exposes a tested rendered width.
+- One 1%-100% domain charge value drives label, fill, target Y, apex, and duration.
+- Evidence and Gate C regression commands: `docs/evidence/PHASE_04_CHARGE_MAPPING_FIX.md`.

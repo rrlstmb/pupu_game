@@ -86,6 +86,17 @@ describe('HitDetection and rant loop', () => {
     expect(result.npcs[0].validHitCount).toBe(0);
   });
 
+  it('does not hit recovering NPCs inside the landing window', () => {
+    const result = resolveProjectileNPCHits(
+      [projectileAt(10, 500, 320)],
+      [npcAt(1, 500, 'Recovering')],
+      NPC_DEFINITIONS,
+      new Set(),
+      POOP_DEFINITIONS
+    );
+    expect(result.events).toHaveLength(0);
+  });
+
   it('keeps simultaneous NPC hit states independent', () => {
     const npcs = [npcAt(1, 500, 'Walking'), npcAt(2, 700, 'Walking')];
     const projectiles = [projectileAt(10, 500, 300), projectileAt(11, 700, 300)];
@@ -112,6 +123,50 @@ describe('HitDetection and rant loop', () => {
 
     expect(projectile.visualPosition.y).not.toBe(projectile.position.y);
     expect(result.npcs[0]).toMatchObject({ state: 'Hit', validHitCount: 1 });
+  });
+
+  it('uses final landing X with dynamic NPC width and rejects another lane', () => {
+    const smallDefinition = { ...office, width: 30 };
+    const atEdge = { ...npcAt(1, 530, 'Walking'), y: 358 };
+    const outside = { ...npcAt(2, 530.1, 'Walking'), y: 358 };
+    const otherLane = { ...npcAt(3, 500, 'Walking'), y: 250 };
+    const projectile = projectileAt(10, 500, 358, 100);
+
+    const edgeResult = resolveProjectileNPCHits([projectile], [atEdge], [smallDefinition], new Set(), POOP_DEFINITIONS);
+    const outsideResult = resolveProjectileNPCHits([projectile], [outside], [smallDefinition], new Set(), POOP_DEFINITIONS);
+    const laneResult = resolveProjectileNPCHits([projectile], [otherLane], [smallDefinition], new Set(), POOP_DEFINITIONS);
+    expect(edgeResult.events).toHaveLength(1);
+    expect(outsideResult.events).toHaveLength(0);
+    expect(laneResult.events).toHaveLength(0);
+    expect(projectile.visualPosition.y).not.toBe(projectile.landedAt?.y);
+  });
+
+  it('selects one nearest ordinary target with deterministic id tie-break', () => {
+    const nearest = { ...npcAt(8, 508, 'Walking'), y: 358 };
+    const farther = { ...npcAt(9, 522, 'Walking'), y: 358 };
+    const nearestResult = resolveProjectileNPCHits(
+      [projectileAt(10, 500, 358)], [farther, nearest], NPC_DEFINITIONS, new Set(), POOP_DEFINITIONS
+    );
+    expect(nearestResult.events).toHaveLength(1);
+    expect(nearestResult.events[0]).toMatchObject({ npcId: 8 });
+
+    const left = { ...npcAt(3, 490, 'Walking'), y: 358 };
+    const right = { ...npcAt(7, 510, 'Walking'), y: 358 };
+    const tieResult = resolveProjectileNPCHits(
+      [projectileAt(11, 500, 358)], [right, left], NPC_DEFINITIONS, new Set(), POOP_DEFINITIONS
+    );
+    expect(tieResult.events).toHaveLength(1);
+    expect(tieResult.events[0]).toMatchObject({ npcId: 3 });
+  });
+
+  it('keeps splash strategy multi-target behavior after deterministic primary selection', () => {
+    const primary = { ...npcAt(1, 500, 'Walking'), y: 358 };
+    const nearby = { ...npcAt(2, 540, 'Walking'), y: 358 };
+    const projectile = { ...projectileAt(10, 500, 358), poopType: 'splash_poop' as const };
+    const result = resolveProjectileNPCHits(
+      [projectile], [nearby, primary], NPC_DEFINITIONS, new Set(), POOP_DEFINITIONS
+    );
+    expect(result.events.map((event) => event.npcId).sort()).toEqual([1, 2]);
   });
 });
 
@@ -169,6 +224,7 @@ function projectileAt(id: number, x: number, y: number, visualY = y): Projectile
     position: { x, y, time: 0 },
     previousVisualPosition: { x, y: visualY, time: 0 },
     visualPosition: { x, y: visualY, time: 0 },
-    status: 'active'
+    status: 'landed',
+    landedAt: { x, y, time: 1 }
   };
 }

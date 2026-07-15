@@ -120,6 +120,7 @@ function projectileAt(id: number, poopType: PoopType, x: number, y: number): Pro
     position: { x, y, time: 0 },
     previousVisualPosition: { x, y, time: 0 },
     visualPosition: { x, y, time: 0 },
-    status: 'active'
+    status: 'landed',
+    landedAt: { x, y, time: 1 }
   };
 }

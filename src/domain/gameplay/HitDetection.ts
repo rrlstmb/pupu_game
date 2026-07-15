@@ -1,4 +1,5 @@
 import { hitReactionForCount } from '../../data/npcHitRules';
+import { LANDING_HIT_CONFIG } from '../../data/hitDetectionConfig';
 import { NPC_POOP_INTERACTIONS, SAFE_DEFAULT_INTERACTION } from '../../data/npcPoopInteractions';
 import type { PoopDefinition } from '../poop/PoopModel';
 import { stickyEffectForHit, strategyFor } from '../poop/PoopBehaviorStrategy';
@@ -6,6 +7,7 @@ import type { Projectile } from '../projectile/ProjectileSystem';
 import type { NPCDefinition, NPCInstanceState } from '../npc/NPCModel';
 import { interactionFor, isBlockedByInteraction } from '../npc/NPCInteractionMatrix';
 import { GameplayEventTypes, type GameplayEvent } from './GameplayEvents';
+import { landingPointForProjectile, selectLandingHitCandidates } from './LandingHitWindow';
 
 export type HitDetectionResult = {
   readonly npcs: readonly NPCInstanceState[];
@@ -28,23 +30,21 @@ export function resolveProjectileNPCHits(
   let nextNpcs = [...npcs];
 
   for (const projectile of projectiles) {
-    if (projectile.status !== 'active') {
-      continue;
-    }
+    const landing = landingPointForProjectile(projectile);
+    if (!landing) continue;
+    const candidates = selectLandingHitCandidates(
+      landing,
+      nextNpcs,
+      definitions,
+      LANDING_HIT_CONFIG,
+      canNPCBeHit
+    );
+    const maxPrimaryTargets = Math.max(0, LANDING_HIT_CONFIG.ordinaryPoopMaxTargets);
+    const primaryCandidates = candidates.slice(0, maxPrimaryTargets);
 
-    for (const npc of nextNpcs) {
-      const definition = definitions.find((candidate) => candidate.id === npc.definitionId);
-      if (!definition || !canNPCBeHit(npc)) {
-        continue;
-      }
+    for (const { npc } of primaryCandidates) {
       const poopDefinition = poopDefinitions.find((candidate) => candidate.id === projectile.poopType);
-      if (!poopDefinition) {
-        continue;
-      }
-
-      if (!overlaps(projectile, npc, definition)) {
-        continue;
-      }
+      if (!poopDefinition) continue;
       const interaction = interactionFor(NPC_POOP_INTERACTIONS, npc.definitionId, projectile.poopType, SAFE_DEFAULT_INTERACTION);
       if (isBlockedByInteraction(interaction, projectile.bounceCount)) {
         projectileIdsToRecycle.add(projectile.id);
@@ -146,20 +146,4 @@ export function removeHitTokensForProjectiles(
 
 export function canNPCBeHit(npc: NPCInstanceState): boolean {
   return npc.state === 'Walking' || npc.state === 'Distracted';
-}
-
-function overlaps(projectile: Projectile, npc: NPCInstanceState, definition: NPCDefinition): boolean {
-  const halfWidth = (definition.width * npc.scale) / 2;
-  const height = definition.height * npc.scale;
-  const radius = projectile.config.collisionRadius;
-  const minProjectileX = Math.min(projectile.previousPosition.x, projectile.position.x);
-  const maxProjectileX = Math.max(projectile.previousPosition.x, projectile.position.x);
-  const minProjectileY = Math.min(projectile.previousPosition.y, projectile.position.y);
-  const maxProjectileY = Math.max(projectile.previousPosition.y, projectile.position.y);
-  const left = npc.x - halfWidth - radius;
-  const right = npc.x + halfWidth + radius;
-  const top = npc.y - height - radius;
-  const bottom = npc.y + radius;
-
-  return maxProjectileX >= left && minProjectileX <= right && maxProjectileY >= top && minProjectileY <= bottom;
 }

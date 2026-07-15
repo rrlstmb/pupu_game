@@ -158,6 +158,7 @@ function projectileAt(poopType: Projectile['poopType'], bounceCount: number): Pr
     position: { x: 500, y: 320, time: 0 },
     previousVisualPosition: { x: 500, y: 320, time: 0 },
     visualPosition: { x: 500, y: 320, time: 0 },
-    status: 'active'
+    status: 'landed',
+    landedAt: { x: 500, y: 320, time: 1 }
   };
 }

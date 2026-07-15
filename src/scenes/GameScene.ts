@@ -109,6 +109,11 @@ export class GameScene extends Phaser.Scene {
   private environmentalEffects: EnvironmentalEffectState = createEnvironmentalEffectState();
   private projectileConfig: ProjectileConfig = NORMAL_POOP_PROJECTILE_CONFIG;
   private chargeState: ChargeState = createChargeState();
+  private lastLandingHitDebug?: {
+    readonly projectiles: readonly { readonly id: number; readonly x: number; readonly y: number }[];
+    readonly npcs: readonly { readonly id: number; readonly x: number; readonly y: number; readonly state: string }[];
+    readonly selectedNpcIds: readonly number[];
+  };
   private isGameOver = false;
   private playerState!: PlayerState;
   private playerAvatar?: Phaser.GameObjects.Container;
@@ -141,6 +146,7 @@ export class GameScene extends Phaser.Scene {
     this.environmentalEffects = createEnvironmentalEffectState();
     this.projectileConfig = NORMAL_POOP_PROJECTILE_CONFIG;
     this.chargeState = createChargeState();
+    this.lastLandingHitDebug = undefined;
     this.npcRng = new SeededRng(this.levelSession.definition.seed);
     this.isGameOver = false;
     this.scrollingLayers.length = 0;
@@ -411,21 +417,29 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.projectileSystem.update(deltaSeconds, this.aimAssist.getPredictedLanding());
-    this.createZonesFromLandedProjectiles();
+    const naturallyRecycledProjectiles = this.projectileSystem.consumeNaturalRecycledProjectiles();
+    this.createZonesFromLandedProjectiles(naturallyRecycledProjectiles);
     this.syncZoneViews();
     const naturalRecycleCount = this.projectileSystem.consumeNaturalRecycleCount();
-    for (let index = 0; index < naturalRecycleCount; index += 1) {
-      this.scoreState = applyMissPenalty(this.scoreState, SCORE_RULES);
-    }
-    const projectileSnapshot = this.projectileSystem.snapshot().projectiles;
     const hitResult = resolveProjectileNPCHits(
-      projectileSnapshot,
+      naturallyRecycledProjectiles,
       this.npcSpawnerState.npcs,
       NPC_DEFINITIONS,
       this.hitTokens,
       POOP_DEFINITIONS,
       this.levelSession.id
     );
+    if (naturallyRecycledProjectiles.some((projectile) => projectile.status === 'landed')) {
+      this.lastLandingHitDebug = {
+        projectiles: naturallyRecycledProjectiles
+          .filter((projectile) => projectile.status === 'landed')
+          .map((projectile) => ({ id: projectile.id, x: projectile.position.x, y: projectile.position.y })),
+        npcs: this.npcSpawnerState.npcs.map((npc) => ({
+          id: npc.id, x: npc.x, y: npc.y, state: npc.state
+        })),
+        selectedNpcIds: hitResult.events.map((event) => event.npcId)
+      };
+    }
     if (hitResult.events.length > 0) {
       this.npcSpawnerState = {
         ...this.npcSpawnerState,
@@ -440,12 +454,16 @@ export class GameScene extends Phaser.Scene {
           (event) => event.type === GameplayEventTypes.ProjectileHit
         ).length
       });
-      this.createZonesFromHitProjectiles(projectileSnapshot, hitResult.projectileIdsToRecycle);
       this.projectileSystem.recycleByIds(hitResult.projectileIdsToRecycle);
       this.hitTokens = new Set(removeHitTokensForProjectiles(this.hitTokens, hitResult.projectileIdsToRecycle));
       if (this.stopFrameIfCaught()) {
         return;
       }
+    }
+    const hitProjectileIds = new Set(hitResult.projectileIdsToRecycle);
+    const missedRecycleCount = Math.max(0, naturalRecycleCount - hitProjectileIds.size);
+    for (let index = 0; index < missedRecycleCount; index += 1) {
+      this.scoreState = applyMissPenalty(this.scoreState, SCORE_RULES);
     }
     if (!this.isComboClockPaused()) {
       this.scoreState = updateComboTimer(this.scoreState, deltaSeconds);
@@ -590,21 +608,12 @@ export class GameScene extends Phaser.Scene {
     return true;
   }
 
-  private createZonesFromLandedProjectiles(): void {
-    for (const projectile of this.projectileSystem.consumeNaturalRecycledProjectiles()) {
+  private createZonesFromLandedProjectiles(projectiles: readonly Projectile[]): void {
+    for (const projectile of projectiles) {
       if (projectile.status !== 'landed' || !projectile.landedAt) {
         continue;
       }
       this.createZoneFromProjectile(projectile, projectile.landedAt);
-    }
-  }
-
-  private createZonesFromHitProjectiles(projectiles: readonly Projectile[], projectileIds: readonly number[]): void {
-    const ids = new Set(projectileIds);
-    for (const projectile of projectiles) {
-      if (ids.has(projectile.id)) {
-        this.createZoneFromProjectile(projectile, projectile.position);
-      }
     }
   }
 
@@ -942,6 +951,8 @@ export class GameScene extends Phaser.Scene {
     window.__SHIMING_BIDA_DEBUG__.aimAssistVisible = this.aimAssist.isVisible();
     window.__SHIMING_BIDA_DEBUG__.chargeState = this.chargeState;
     window.__SHIMING_BIDA_DEBUG__.chargeMeterVisible = this.chargeMeter.isVisible();
+    window.__SHIMING_BIDA_DEBUG__.chargeMeter = this.chargeMeter.snapshot();
+    window.__SHIMING_BIDA_DEBUG__.landingHit = this.lastLandingHitDebug;
     window.__SHIMING_BIDA_DEBUG__.inputListenerCount = this.inputAdapter.getBoundListenerCount();
     window.__SHIMING_BIDA_DEBUG__.debugOverlayVisible = this.debugOverlayVisible;
     window.__SHIMING_BIDA_DEBUG__.levelSession = this.levelSession;
@@ -980,6 +991,20 @@ export class GameScene extends Phaser.Scene {
         timeUntilNextSpawn: disableAutoSpawn ? Number.POSITIVE_INFINITY : this.npcSpawnerState.timeUntilNextSpawn
       };
     };
+    window.__SHIMING_BIDA_DEBUG__.setPlayerX = (x: number) => {
+      this.playerState = {
+        ...this.playerState,
+        x: Phaser.Math.Clamp(x, this.layout.rooftop.minX, this.layout.rooftop.maxX),
+        velocityX: 0
+      };
+      this.syncPlayerView();
+    };
+    window.__SHIMING_BIDA_DEBUG__.setNPCX = (npcId: number, x: number) => {
+      this.npcSpawnerState = {
+        ...this.npcSpawnerState,
+        npcs: this.npcSpawnerState.npcs.map((npc) => npc.id === npcId ? { ...npc, x } : npc)
+      };
+    };
   }
 
   private clearDebugState(): void {
@@ -1011,11 +1036,15 @@ export class GameScene extends Phaser.Scene {
     delete debug.aimAssistVisible;
     delete debug.chargeState;
     delete debug.chargeMeterVisible;
+    delete debug.chargeMeter;
+    delete debug.landingHit;
     delete debug.inputListenerCount;
     delete debug.debugOverlayVisible;
     delete debug.levelSession;
     delete debug.advanceLevelTime;
     delete debug.spawnNPCSandbox;
+    delete debug.setPlayerX;
+    delete debug.setNPCX;
     delete debug.clearNPCSandbox;
   }
 }

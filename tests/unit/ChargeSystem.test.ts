@@ -6,6 +6,7 @@ import {
   chargedProjectileConfig,
   chargeMeterState,
   createChargeState,
+  getTargetYFromChargePower,
   updateCharge
 } from '../../src/domain/projectile/ChargeSystem';
 import { trajectoryStateAt } from '../../src/domain/projectile/ProjectileTrajectory';
@@ -13,7 +14,11 @@ import { trajectoryStateAt } from '../../src/domain/projectile/ProjectileTraject
 describe('ChargeSystem', () => {
   it('starts on Space keydown and increases while held without exceeding one', () => {
     let state = updateCharge(createChargeState(), action(true, true, false), 0, true, THROW_CHARGE_CONFIG).state;
-    expect(state).toMatchObject({ isCharging: true, chargeTime: 0, chargePower: 0 });
+    expect(state).toMatchObject({
+      isCharging: true,
+      chargeTime: 0,
+      chargePower: THROW_CHARGE_CONFIG.chargePercentMin
+    });
     state = updateCharge(state, action(false, true, false), 99, true, THROW_CHARGE_CONFIG).state;
     expect(state.chargePower).toBe(1);
     expect(state.chargeTime).toBe(THROW_CHARGE_CONFIG.maxChargeTime);
@@ -41,8 +46,8 @@ describe('ChargeSystem', () => {
   });
 
   it.each([
-    ['lower', THROW_CHARGE_CONFIG.minThrowPower, 451.35],
-    ['middle', 0.45, 358.15],
+    ['lower', 0.01, 463],
+    ['middle', 0.5, 347.67676767676767],
     ['top', 1, 230]
   ])('maps %s charge to a deterministic lane target', (_lane, power, targetY) => {
     const config = chargedProjectileConfig(
@@ -73,11 +78,50 @@ describe('ChargeSystem', () => {
       createChargeState(), action(true, true, false), 5, true, THROW_CHARGE_CONFIG
     ).state;
     expect(chargeMeterState(maxState, THROW_CHARGE_CONFIG)).toMatchObject({
-      visible: true, fillRatio: 1, isMax: true, label: 'MAX'
+      visible: true, fillRatio: 1, percent: 100, isMax: true, label: 'MAX 100%'
     });
     expect(chargeMeterState(cancelCharge(), THROW_CHARGE_CONFIG)).toMatchObject({
       visible: false, fillRatio: 0, isMax: false
     });
+  });
+
+  it.each([
+    [0.01, 1],
+    [0.21, 21],
+    [0.5, 50],
+    [1, 100]
+  ])('uses one power value for %s meter fill and label', (chargePower, percent) => {
+    const presentation = chargeMeterState(
+      { isCharging: true, chargeTime: 0.5, chargePower },
+      THROW_CHARGE_CONFIG
+    );
+    const innerWidth = THROW_CHARGE_CONFIG.chargeMeterWidth - THROW_CHARGE_CONFIG.chargeMeterFillPadding * 2;
+    expect(presentation.percent).toBe(percent);
+    expect(presentation.fillRatio).toBeCloseTo(chargePower, 8);
+    expect(presentation.fillWidth).toBeCloseTo(innerWidth * chargePower, 8);
+    expect(presentation.fillWidth).toBeGreaterThanOrEqual(0);
+    expect(presentation.fillWidth).toBeLessThanOrEqual(innerWidth);
+    expect(presentation.label).toContain(`${percent}%`);
+  });
+
+  it('maps the same clamped charge power from near Y to far Y', () => {
+    const targetAtOne = getTargetYFromChargePower(0.01, THROW_CHARGE_CONFIG);
+    const targetAtHalf = getTargetYFromChargePower(0.5, THROW_CHARGE_CONFIG);
+    const targetAtFull = getTargetYFromChargePower(1, THROW_CHARGE_CONFIG);
+
+    expect(THROW_CHARGE_CONFIG.nearTargetY).toBeGreaterThan(THROW_CHARGE_CONFIG.farTargetY);
+    expect(targetAtOne).toBe(THROW_CHARGE_CONFIG.nearTargetY);
+    const expectedHalf = THROW_CHARGE_CONFIG.nearTargetY +
+      (THROW_CHARGE_CONFIG.farTargetY - THROW_CHARGE_CONFIG.nearTargetY) * (0.5 - 0.01) / 0.99;
+    expect(targetAtHalf).toBeCloseTo(expectedHalf, 8);
+    expect(Math.abs(
+      targetAtHalf - (THROW_CHARGE_CONFIG.nearTargetY + THROW_CHARGE_CONFIG.farTargetY) / 2
+    )).toBeLessThan(2);
+    expect(targetAtFull).toBe(THROW_CHARGE_CONFIG.farTargetY);
+    expect(getTargetYFromChargePower(-10, THROW_CHARGE_CONFIG)).toBe(THROW_CHARGE_CONFIG.nearTargetY);
+    expect(getTargetYFromChargePower(10, THROW_CHARGE_CONFIG)).toBe(THROW_CHARGE_CONFIG.farTargetY);
+    expect(targetAtFull).toBeLessThan(targetAtHalf);
+    expect(targetAtHalf).toBeLessThan(targetAtOne);
   });
 });
 

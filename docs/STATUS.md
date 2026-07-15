@@ -13,9 +13,9 @@ Codex must not set any phase to `PASS`.
 
 ## Current Audit
 
-- Audit: Prompt 04 targeted charged Y-axis throw patch after Gate C
+- Audit: Prompt 04/06 targeted landing hit window patch after Gate C
 - Status: READY_FOR_REVIEW
-- Evidence: `docs/evidence/PHASE_04_CHARGED_THROW_FIX.md`
+- Evidence: `docs/evidence/PHASE_06_LANDING_HIT_WINDOW_FIX.md`
 - Prompt 13 remains `NOT_STARTED`.
 
 ## Audit History
@@ -26,6 +26,8 @@ Codex must not set any phase to `PASS`.
 - Gate C - Vertical Slice: `READY_FOR_REVIEW` on 2026-07-14; evidence at `docs/evidence/GATE_C.md`.
 - Prompt 04 Ground Projection Targeted Fix: `READY_FOR_REVIEW` on 2026-07-14; evidence at `docs/evidence/PHASE_04_GROUND_PROJECTION_FIX.md`.
 - Prompt 04 Charged Y-Axis Throw Targeted Patch: `READY_FOR_REVIEW` on 2026-07-14; evidence at `docs/evidence/PHASE_04_CHARGED_THROW_FIX.md`.
+- Prompt 04 Charge Meter and Distance Mapping Targeted Patch: `READY_FOR_REVIEW` on 2026-07-15; evidence at `docs/evidence/PHASE_04_CHARGE_MAPPING_FIX.md`.
+- Prompt 04/06 Landing Hit Window Targeted Patch: `READY_FOR_REVIEW` on 2026-07-15; evidence at `docs/evidence/PHASE_06_LANDING_HIT_WINDOW_FIX.md`.
 
 ## Baseline
 

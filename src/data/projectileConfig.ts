@@ -25,12 +25,17 @@ export type ProjectileConfig = {
 };
 
 export type ChargeThrowConfig = {
+  readonly chargePercentMin: number;
+  readonly chargePercentMax: number;
   readonly minChargeTime: number;
   readonly maxChargeTime: number;
   readonly minThrowPower: number;
   readonly maxThrowPower: number;
-  readonly minTargetY: number;
-  readonly maxTargetY: number;
+  readonly nearTargetY: number;
+  readonly farTargetY: number;
+  readonly lowerLaneTargetRange: TargetYRange;
+  readonly middleLaneTargetRange: TargetYRange;
+  readonly topLaneTargetRange: TargetYRange;
   readonly apexHeightMin: number;
   readonly apexHeightMax: number;
   readonly travelDurationMin: number;
@@ -38,10 +43,16 @@ export type ChargeThrowConfig = {
   readonly collisionRadius: number;
   readonly chargeMeterWidth: number;
   readonly chargeMeterHeight: number;
+  readonly chargeMeterFillPadding: number;
   readonly chargeMeterPosition: { readonly x: number; readonly y: number };
   readonly allowDebugTrajectoryOverlay: boolean;
   readonly maxReachTopPadding: number;
   readonly cooldownAfterThrow: number;
+};
+
+export type TargetYRange = {
+  readonly farY: number;
+  readonly nearY: number;
 };
 
 export const NORMAL_POOP_PROJECTILE_CONFIG: ProjectileConfig = {
@@ -71,12 +82,17 @@ export const NORMAL_POOP_PROJECTILE_CONFIG: ProjectileConfig = {
 };
 
 export const THROW_CHARGE_CONFIG: ChargeThrowConfig = {
+  chargePercentMin: 0.01,
+  chargePercentMax: 1,
   minChargeTime: 0.08,
   maxChargeTime: 1.2,
-  minThrowPower: 0.05,
+  minThrowPower: 0.01,
   maxThrowPower: 1,
-  minTargetY: 463,
-  maxTargetY: 230,
+  nearTargetY: 463,
+  farTargetY: 230,
+  lowerLaneTargetRange: { farY: 420, nearY: 463 },
+  middleLaneTargetRange: { farY: 325, nearY: 380 },
+  topLaneTargetRange: { farY: 230, nearY: 270 },
   apexHeightMin: 70,
   apexHeightMax: 190,
   travelDurationMin: 0.65,
@@ -84,6 +100,7 @@ export const THROW_CHARGE_CONFIG: ChargeThrowConfig = {
   collisionRadius: 11,
   chargeMeterWidth: 280,
   chargeMeterHeight: 20,
+  chargeMeterFillPadding: 4,
   chargeMeterPosition: { x: 640, y: 676 },
   allowDebugTrajectoryOverlay: true,
   maxReachTopPadding: 24,

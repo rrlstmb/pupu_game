@@ -9,7 +9,7 @@ import type { PlayerState } from './domain/player/PlayerMovement';
 import type { EnvironmentalEffectState } from './domain/poop/EnvironmentalEffectZone';
 import type { PoopInventoryState } from './domain/poop/PoopInventory';
 import type { ProjectileSystemState } from './domain/projectile/ProjectileSystem';
-import type { ChargeState } from './domain/projectile/ChargeSystem';
+import type { ChargeMeterState, ChargeState } from './domain/projectile/ChargeSystem';
 import type { ProjectileViewPoolStats } from './systems/projectile/PhaserProjectileSystem';
 import type { NPCViewPoolStats } from './systems/npc/PhaserNPCSystem';
 import type { ScoreState } from './domain/score/ScoreCalculator';
@@ -55,11 +55,19 @@ declare global {
       aimAssistVisible?: boolean;
       chargeState?: ChargeState;
       chargeMeterVisible?: boolean;
+      chargeMeter?: ChargeMeterState & { readonly renderedFillWidth: number };
+      landingHit?: {
+        readonly projectiles: readonly { readonly id: number; readonly x: number; readonly y: number }[];
+        readonly npcs: readonly { readonly id: number; readonly x: number; readonly y: number; readonly state: string }[];
+        readonly selectedNpcIds: readonly number[];
+      };
       inputListenerCount?: number;
       debugOverlayVisible?: boolean;
       levelSession?: LevelSession;
       advanceLevelTime?: (seconds: number) => void;
       spawnNPCSandbox?: (npcType: string, x?: number, laneId?: 'back_shop' | 'mid_sidewalk' | 'front_road') => void;
+      setPlayerX?: (x: number) => void;
+      setNPCX?: (npcId: number, x: number) => void;
       clearNPCSandbox?: (disableAutoSpawn?: boolean) => void;
     };
   }

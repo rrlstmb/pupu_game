@@ -145,6 +145,8 @@ Depth constants live in `src/domain/layout/Depth.ts`.
 - Hit detection reads consecutive ground-projection segments and the data-driven collision radius; it must never read the visual sprite Y coordinate.
 - Debug-only trajectory diagnostics may sample ground and visual paths from the same pure trajectory functions; production play does not render trajectory or landing helper lines.
 - Normal throws use a pure charge state: Space press starts charging, game-time hold updates power, and release selects the data-driven target Y, apex, and travel duration before firing.
+- Charge power is quantized to the displayed 1%-100% scale. Meter label, fill width, projection target Y, visual apex, and travel duration consume that same normalized value.
+- `getTargetYFromChargePower` owns the linear mapping from the near/lower alley target at 1% to the far/top target at 100%; Phaser UI and scenes do not duplicate the mapping.
 - Charge changes projection depth only. With no wind, normal-projectile X remains the player's release X while the player continues to move horizontally.
 - Velocity is pixels per second.
 - Gravity and wind acceleration are pixels per second squared.
@@ -203,6 +205,13 @@ Depth constants live in `src/domain/layout/Depth.ts`.
 - Debug NPC sandbox is development-only and exposes deterministic spawn/clear commands for acceptance.
 
 ## Score and Combo Rules
+
+## Landing Hit Rules
+
+- `LandingHitWindow` is pure domain logic. It accepts only a projectile's final `landedAt` projection point; visual arc coordinates are presentation-only.
+- Each candidate NPC contributes its scaled world width and height. Horizontal tolerance is the configured width multiplier with min/max clamps; vertical tolerance is height-derived and capped by lane tolerance.
+- Ordinary poop sorts valid candidates by landing distance, lane distance, then stable NPC id and resolves at most one target. Area poop retains its own bounded strategy after the primary landing candidate is selected.
+- `src/data/hitDetectionConfig.ts` owns multipliers, padding clamps, lane tolerance, bounds behavior, target cap, and tie-break policy.
 
 - Score calculation lives in pure domain code under `src/domain/score`.
 - Score rules live in `src/data/scoreRules.ts` and include base scores, precision grades, combo thresholds, repeat-hit multipliers, miss penalty, and default phase multipliers.

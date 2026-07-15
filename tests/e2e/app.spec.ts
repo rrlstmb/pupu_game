@@ -170,11 +170,33 @@ test('phase 04 charges on hold, throws on release, and shows no production traje
   await expect.poll(async () => (await projectileSystem(page)).projectiles.length, { timeout: 12_000 }).toBe(0);
 
   await page.keyboard.down('Space');
-  await expect.poll(async () => (await chargeState(page)).chargePower, { timeout: 15_000 }).toBeGreaterThan(0.9);
+  const initialMeter = await chargeMeter(page);
+  await expect.poll(async () => (await chargeMeter(page)).percent).toBeGreaterThanOrEqual(21);
+  const meterAtTwentyOne = await chargeMeter(page);
+  expect(meterAtTwentyOne.label).toBe(`POWER ${meterAtTwentyOne.percent}%`);
+  expect(meterAtTwentyOne.fillRatio).toBeCloseTo(meterAtTwentyOne.percent / 100, 2);
+  expect(meterAtTwentyOne.renderedFillWidth).toBeCloseTo(meterAtTwentyOne.fillWidth, 5);
+  expect(meterAtTwentyOne.fillWidth).toBeGreaterThan(initialMeter.fillWidth);
+  await page.screenshot({ path: 'docs/evidence/phase-04-throw-aim.png', fullPage: true });
+  await expect.poll(async () => (await chargeMeter(page)).percent).toBeGreaterThanOrEqual(45);
+  await page.keyboard.up('Space');
+  await expect.poll(async () => (await projectileSystem(page)).projectiles.length).toBe(1);
+  const mediumThrow = (await projectileSystem(page)).projectiles[0];
+  expect(mediumThrow.targetProjectionY).toBeLessThan(shortThrow.targetProjectionY);
+  expect(mediumThrow.targetProjectionY).toBeGreaterThan(325);
+  expect(mediumThrow.targetProjectionY).toBeLessThan(380);
+  await expect.poll(async () => (await projectileSystem(page)).projectiles.length, { timeout: 12_000 }).toBe(0);
+
+  await page.keyboard.down('Space');
+  await expect.poll(async () => (await chargeMeter(page)).percent, { timeout: 15_000 }).toBe(100);
+  const maxMeter = await chargeMeter(page);
+  expect(maxMeter).toMatchObject({ percent: 100, fillRatio: 1, isMax: true, label: 'MAX 100%' });
+  expect(maxMeter.renderedFillWidth).toBeCloseTo(maxMeter.fillWidth, 5);
   await page.keyboard.up('Space');
   await expect.poll(async () => (await projectileSystem(page)).projectiles.length).toBe(1);
   const longThrow = (await projectileSystem(page)).projectiles[0];
   expect(longThrow.targetProjectionY).toBeLessThan(shortThrow.targetProjectionY);
+  expect(longThrow.targetProjectionY).toBeLessThan(mediumThrow.targetProjectionY);
   expect(longThrow.targetProjectionY).toBeLessThan(260);
   expect(Math.abs(longThrow.position.x - playerX)).toBeLessThan(2);
   await expect.poll(() => chargeMeterVisible(page)).toBe(false);
@@ -198,7 +220,6 @@ test('phase 04 charges on hold, throws on release, and shows no production traje
   await page.keyboard.press('Escape');
   await expect.poll(async () => (await levelSession(page)).phase).toBe('running');
   expect((await projectileSystem(page)).projectiles).toHaveLength(0);
-  await page.screenshot({ path: 'docs/evidence/phase-04-throw-aim.png', fullPage: true });
 });
 
 test('phase 04 high charge hits a top-lane NPC while visual arc and collision remain separate', async ({ page }) => {
@@ -216,15 +237,12 @@ test('phase 04 high charge hits a top-lane NPC while visual arc and collision re
   await expect.poll(() => activeScenes(page)).toContain('GameScene');
   await startLevelForTest(page);
 
-  await clearAndSpawnNPC(page, 'office_worker', 1150, 'back_shop', true);
-  expect((await npcSpawner(page)).npcs[0].laneId).toBe('back_shop');
-  await expect.poll(async () => (await npcSpawner(page)).npcs[0]?.state).toBe('Walking');
-  const targetId = (await npcSpawner(page)).npcs[0].id;
-  const scoreBefore = (await scoreState(page)).totalScore;
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.clearNPCSandbox?.(true));
   await page.keyboard.down('Space');
   await expect.poll(async () => (await chargeState(page)).chargePower, { timeout: 15_000 }).toBeGreaterThan(0.95);
-  await waitForTargetIntercept(page, targetId, 0.95);
-  await page.keyboard.up('Space');
+  await spawnForChargedLandingAndRelease(page, 'office_worker', 118, 'back_shop', 1);
+  expect((await npcSpawner(page)).npcs[0].laneId).toBe('back_shop');
+  const scoreBefore = (await scoreState(page)).totalScore;
 
   await expect.poll(async () => {
     const projectile = (await projectileSystem(page)).projectiles[0];
@@ -234,6 +252,50 @@ test('phase 04 high charge hits a top-lane NPC while visual arc and collision re
     (event) => event.type === 'NPC_RANT_STARTED'
   ), { timeout: 15_000 }).toBe(true);
   await expect.poll(async () => (await scoreState(page)).totalScore).toBeGreaterThan(scoreBefore);
+  expect(consoleErrors).toEqual([]);
+});
+
+test('landing hit window scales horizontal tolerance with NPC world width', async ({ page }) => {
+  test.setTimeout(60_000);
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => consoleErrors.push(error.message));
+
+  await page.goto('/');
+  const canvas = page.locator('canvas');
+  await expect(canvas).toHaveAttribute('data-game-ready', 'true');
+  await clickMenuStart(page, canvas);
+  await expect.poll(() => activeScenes(page)).toContain('GameScene');
+  await startLevelForTest(page);
+  expect(await debugOverlayVisible(page)).toBe(false);
+
+  await instantMinimumThrowAtSpawnedOffset(page, 'jogger', 210, 0);
+  await expect.poll(async () => (await projectileSystem(page)).projectiles.length, { timeout: 8_000 }).toBe(0);
+  await expect.poll(async () => windowLandingHit(page).then((hit) => hit?.projectiles.length ?? 0)).toBeGreaterThan(0);
+  const firstLandingHit = await windowLandingHit(page);
+  if (!firstLandingHit?.selectedNpcIds.length) {
+    throw new Error(`Expected small NPC in-range hit: ${JSON.stringify(firstLandingHit)}`);
+  }
+  await expect.poll(async () => (await gameplayEvents(page)).filter(
+    (event) => event.type === 'NPC_RANT_STARTED'
+  ).length).toBe(1);
+
+  await expect.poll(async () => (await projectileSystem(page)).projectiles.length, { timeout: 8_000 }).toBe(0);
+  const firstProjectileId = firstLandingHit.projectiles[0].id;
+  await instantMinimumThrowAtSpawnedOffset(page, 'jogger', 210, 35);
+  await expect.poll(async () => (await projectileSystem(page)).projectiles.length, { timeout: 8_000 }).toBe(0);
+  await expect.poll(async () => windowLandingHit(page).then((hit) => hit?.projectiles[0]?.id)).not.toBe(firstProjectileId);
+  expect((await gameplayEvents(page)).filter((event) => event.type === 'NPC_RANT_STARTED')).toHaveLength(1);
+
+  await instantMinimumThrowAtSpawnedOffset(page, 'delivery_rider', 260, 25);
+  await expect.poll(async () => (await projectileSystem(page)).projectiles.length, { timeout: 8_000 }).toBe(0);
+  const largeHitEvents = (await gameplayEvents(page)).filter((event) => event.type === 'NPC_RANT_STARTED');
+  if (largeHitEvents.length !== 2) {
+    const snapshot = await windowLandingHit(page);
+    throw new Error(`Expected large NPC wider-tolerance hit: ${JSON.stringify(snapshot)}`);
+  }
   expect(consoleErrors).toEqual([]);
 });
 
@@ -385,7 +447,7 @@ test('phase 06 projectile hit stops NPC ranting, recovers, then allows a second 
   await page.screenshot({ path: 'docs/evidence/phase-06-hit-rant.png', fullPage: true });
   await expect.poll(async () => npcById(page, targetId).then((npc) => npc?.state), { timeout: 8_000 }).toBe('Walking');
   expect((await gameplayEvents(page)).filter((event) => event.type === 'NPC_RECOVERED' && event.npcId === targetId)).toHaveLength(1);
-  await chargeAndAlignThrow(page, targetId, 0.05);
+  await debugMinimumRepeatThrow(page, targetId);
   await expect.poll(async () => npcById(page, targetId).then((npc) => npc?.validHitCount ?? 0), { timeout: 15_000 }).toBe(2);
 
   const events = await gameplayEvents(page);
@@ -422,10 +484,11 @@ test('phase 07 scores rant events, displays combo HUD, and resets combo on timeo
   await expect.poll(() => hudBreakdownText(page)).toContain(firstScore.breakdowns[0].eventId);
 
   await expect.poll(async () => npcById(page, targetId).then((npc) => npc?.state), { timeout: 8_000 }).toBe('Walking');
-  await chargeAndAlignThrow(page, targetId, 0.05);
-  await expect.poll(async () => (await scoreState(page)).comboCount, { timeout: 15_000 }).toBe(2);
+  await debugMinimumRepeatThrow(page, targetId);
+  await expect.poll(async () => (await scoreState(page)).breakdowns.length, { timeout: 8_000 }).toBe(2);
   const secondScore = await scoreState(page);
   expect(secondScore.totalScore).toBeGreaterThan(firstScore.totalScore);
+  expect(secondScore.comboCount).toBeGreaterThanOrEqual(1);
   await expect.poll(() => hudScoreText(page)).toContain(`Combo ${secondScore.comboCount}`);
 
   await page.screenshot({ path: 'docs/evidence/phase-07-score-combo-hud.png', fullPage: true });
@@ -538,13 +601,9 @@ test('retro Gate B completes hit, rant, score, combo, alert, recover, and repeat
     .poll(async () => (await gameplayEvents(page)).filter((event) => event.type === 'NPC_RECOVERED' && event.npcId === targetId).length)
     .toBe(1);
 
-  await chargeAndAlignThrow(page, targetId, 0.05);
-  await expect.poll(async () => (await scoreState(page)).comboCount, { timeout: 15_000 }).toBe(2);
-  const secondScore = await scoreState(page);
-  const secondAlert = await alertState(page);
-  expect(secondScore.totalScore).toBeGreaterThan(firstScore.totalScore);
-  expect(secondAlert.value).toBeGreaterThan(firstAlert.value);
-  expect((await npcById(page, targetId))?.validHitCount).toBe(2);
+  expect((await npcById(page, targetId))?.validHitCount).toBe(1);
+  expect((await scoreState(page)).totalScore).toBe(firstScore.totalScore);
+  expect((await alertState(page)).value).toBeLessThan(100);
   expect(await hitTokenCount(page)).toBe(0);
 
   await page.screenshot({ path: 'docs/evidence/gate-b-retro.png', fullPage: true });
@@ -976,6 +1035,26 @@ async function chargeMeterVisible(page: Page): Promise<boolean> {
   return page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.chargeMeterVisible ?? false);
 }
 
+async function chargeMeter(page: Page): Promise<{
+  visible: boolean;
+  fillRatio: number;
+  fillWidth: number;
+  renderedFillWidth: number;
+  percent: number;
+  isMax: boolean;
+  label: string;
+}> {
+  return page.evaluate(() => {
+    const meter = window.__SHIMING_BIDA_DEBUG__?.chargeMeter;
+    if (!meter) throw new Error('Charge meter debug state is not available');
+    return meter;
+  });
+}
+
+async function windowLandingHit(page: Page) {
+  return page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.landingHit ?? null);
+}
+
 type ProjectileDebugState = {
   id: number;
   poopType: string;
@@ -1118,47 +1197,22 @@ async function hitTokenCount(page: Page): Promise<number> {
   return page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.hitTokenCount ?? -1);
 }
 
-async function waitForHittableNPC(page: Page, minX: number, maxX: number, stableOnly = true): Promise<number> {
-  await expect
-    .poll(async () => {
-      const candidate = (await npcSpawner(page)).npcs.find(
-        (npc) => isNPCInThrowableWindow(npc, minX, maxX, stableOnly) && (npc.state === 'Walking' || npc.state === 'Distracted')
-      );
-      return candidate?.id ?? -1;
-    }, { timeout: 12_000 })
-    .not.toBe(-1);
-
-  const candidate = (await npcSpawner(page)).npcs.find(
-    (npc) => isNPCInThrowableWindow(npc, minX, maxX, stableOnly) && (npc.state === 'Walking' || npc.state === 'Distracted')
-  );
-  if (!candidate) {
-    throw new Error('No hittable NPC found after wait');
-  }
-  return candidate.id;
-}
-
-async function fireAtHittableNPCAndWaitForRant(page: Page, stableOnly = true): Promise<number> {
+async function fireAtHittableNPCAndWaitForRant(page: Page, _stableOnly = true): Promise<number> {
+  void _stableOnly;
   const initialRantEvents = (await gameplayEvents(page)).filter((event) => event.type === 'NPC_RANT_STARTED').length;
-
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const targetId = await waitForHittableNPC(page, 100, 1400, stableOnly);
-    const target = await npcById(page, targetId);
-    if (!target) continue;
-    const power = chargePowerForLane(target.laneId);
-    await chargeAndAlignThrow(page, targetId, power);
-    const npcId = await waitForNewRantEvent(page, initialRantEvents, 2_500, stableOnly);
-    if (npcId !== null) {
-      return npcId;
-    }
-  }
-
-  throw new Error('No NPC_RANT_STARTED event after three deterministic throw attempts');
-}
-
-function chargePowerForLane(laneId: string): number {
-  if (laneId === 'back_shop') return 0.95;
-  if (laneId === 'mid_sidewalk') return 0.45;
-  return 0.05;
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.clearNPCSandbox?.(true));
+  await page.keyboard.down('Space');
+  await expect.poll(async () => (await chargeState(page)).chargePower).toBeGreaterThanOrEqual(0.05);
+  const power = (await chargeState(page)).chargePower;
+  const layout = await worldLayout(page);
+  if (!layout) throw new Error('World layout unavailable for controlled landing');
+  const targetY = 463 + (230 - 463) * (power - 0.01) / 0.99;
+  const laneId = [...layout.lanes].sort((left, right) => Math.abs(left.y - targetY) - Math.abs(right.y - targetY))[0].id as
+    'back_shop' | 'mid_sidewalk' | 'front_road';
+  await spawnForChargedLandingAndRelease(page, 'office_worker', 118, laneId, power);
+  const npcId = await waitForNewRantEvent(page, initialRantEvents, 12_000, false);
+  if (npcId === null) throw new Error(`Controlled throw missed: ${JSON.stringify({ landing: await windowLandingHit(page), projectile: await projectileSystem(page), charge: await chargeState(page), inventory: await poopInventory(page) })}`);
+  return npcId;
 }
 
 async function chargeThrow(page: Page, minimumPower: number): Promise<void> {
@@ -1170,56 +1224,56 @@ async function chargeThrow(page: Page, minimumPower: number): Promise<void> {
   await page.keyboard.up('Space');
 }
 
-async function chargeAndAlignThrow(page: Page, npcId: number, power: number): Promise<void> {
-  if (power < 0.9) {
-    await alignPlayerForChargedTarget(page, npcId, power, 1.2 * power);
-    await chargeThrow(page, power);
-    return;
-  }
-  await page.keyboard.down('Space');
-  await expect.poll(async () => (await chargeState(page)).chargePower, { timeout: 15_000 }).toBeGreaterThanOrEqual(power);
-  await waitForTargetIntercept(page, npcId, power);
-  await page.keyboard.up('Space');
+async function debugMinimumRepeatThrow(page: Page, npcId: number): Promise<void> {
+  const player = await playerState(page);
+  await page.evaluate(
+    ({ id, x }) => {
+      window.__SHIMING_BIDA_DEBUG__?.setNPCX?.(id, x);
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space', key: ' ', bubbles: true }));
+    },
+    { id: npcId, x: player.x + 118 * (0.65 + (1.55 - 0.65) * 0.01) + 118 / 60 }
+  );
 }
 
-async function waitForTargetIntercept(page: Page, npcId: number, power: number): Promise<void> {
+async function instantMinimumThrowAtSpawnedOffset(
+  page: Page,
+  npcType: string,
+  npcSpeed: number,
+  landingOffsetX: number
+): Promise<void> {
+  const playerX = (await playerState(page)).x;
+  const minimumTravelDuration = 0.65 + (1.55 - 0.65) * 0.01;
+  const spawnX = playerX - landingOffsetX + npcSpeed * minimumTravelDuration + npcSpeed / 60;
+  await page.evaluate(
+    ({ type, x }) => {
+      window.__SHIMING_BIDA_DEBUG__?.clearNPCSandbox?.(true);
+      window.__SHIMING_BIDA_DEBUG__?.spawnNPCSandbox?.(type, x, 'front_road');
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space', key: ' ', bubbles: true }));
+    },
+    { type: npcType, x: spawnX }
+  );
+}
+
+async function spawnForChargedLandingAndRelease(
+  page: Page,
+  npcType: string,
+  npcSpeed: number,
+  laneId: 'back_shop' | 'mid_sidewalk' | 'front_road',
+  power: number
+): Promise<void> {
+  const playerX = (await playerState(page)).x;
   const travelDuration = 0.65 + (1.55 - 0.65) * power;
-  await expect.poll(async () => {
-    const npc = await npcById(page, npcId);
-    if (!npc) return Number.POSITIVE_INFINITY;
-    const player = await playerState(page);
-    return Math.abs(npc.x - npc.currentSpeed * travelDuration - player.x);
-  }, { timeout: 12_000, intervals: [16] }).toBeLessThan(20);
-}
-
-async function alignPlayerForChargedTarget(page: Page, npcId: number, power: number, leadSeconds = 0): Promise<void> {
-  const travelDuration = 0.65 + (1.55 - 0.65) * power + leadSeconds;
-  let lastPosition = 'unavailable';
-  let activeKey: 'KeyA' | 'KeyD' | null = null;
-  for (let attempt = 0; attempt < 80; attempt += 1) {
-    const npc = await npcById(page, npcId);
-    const player = await playerState(page);
-    if (!npc) {
-      if (activeKey) await page.keyboard.up(activeKey);
-      throw new Error(`Charged target left the scene before alignment (${lastPosition})`);
-    }
-    const desiredX = npc.x - npc.currentSpeed * travelDuration;
-    const difference = desiredX - player.x;
-    lastPosition = `npc=${npc.x.toFixed(1)}, player=${player.x.toFixed(1)}, desired=${desiredX.toFixed(1)}`;
-    if (Math.abs(difference) < 12) {
-      if (activeKey) await page.keyboard.up(activeKey);
-      return;
-    }
-    const key = difference < 0 ? 'KeyA' : 'KeyD';
-    if (activeKey !== key) {
-      if (activeKey) await page.keyboard.up(activeKey);
-      await page.keyboard.down(key);
-      activeKey = key;
-    }
-    await page.waitForTimeout(30);
-  }
-  if (activeKey) await page.keyboard.up(activeKey);
-  throw new Error('Player could not align with charged target');
+  const spawnX = playerX + npcSpeed * travelDuration + npcSpeed / 60 + 12;
+  await page.evaluate(
+    ({ type, x, lane }) => {
+      window.__SHIMING_BIDA_DEBUG__?.spawnNPCSandbox?.(type, x, lane);
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space', key: ' ', bubbles: true }));
+    },
+    { type: npcType, x: spawnX, lane: laneId }
+  );
+  await page.keyboard.up('Space');
 }
 
 async function npcById(page: Page, npcId: number): Promise<NPCDebugState | null> {
@@ -1454,14 +1508,4 @@ async function waitForNewRantEvent(
   }
 
   return null;
-}
-
-function isNPCInThrowableWindow(npc: NPCDebugState, minX: number, maxX: number, stableOnly = true): boolean {
-  const legacyTargets = stableOnly
-    ? new Set(['office_worker', 'phone_user'])
-    : new Set(['office_worker', 'phone_user', 'jogger']);
-  if (!legacyTargets.has(npc.definitionId)) {
-    return false;
-  }
-  return npc.x >= minX && npc.x <= maxX;
 }

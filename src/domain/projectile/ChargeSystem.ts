@@ -15,6 +15,8 @@ export type ChargeUpdate = {
 export type ChargeMeterState = {
   readonly visible: boolean;
   readonly fillRatio: number;
+  readonly fillWidth: number;
+  readonly percent: number;
   readonly minimumRatio: number;
   readonly isMax: boolean;
   readonly label: string;
@@ -33,7 +35,7 @@ export function updateCharge(
 ): ChargeUpdate {
   let next = state;
   if (input.pressed && !state.isCharging && canStart) {
-    next = { isCharging: true, chargeTime: 0, chargePower: 0 };
+    next = { isCharging: true, chargeTime: 0, chargePower: config.chargePercentMin };
   }
   if (!next.isCharging) return { state: next };
 
@@ -68,14 +70,14 @@ export function chargedProjectileConfig(
   config: ChargeThrowConfig,
   verticalOnly: boolean
 ): ProjectileConfig {
-  const power = clamp(throwPower, config.minThrowPower, config.maxThrowPower);
+  const power = normalizeChargePower(throwPower, config);
   return {
     ...base,
     initialVelocity: {
       ...base.initialVelocity,
       x: verticalOnly ? 0 : base.initialVelocity.x
     },
-    targetProjectionY: lerp(config.minTargetY, config.maxTargetY, power),
+    targetProjectionY: getTargetYFromChargePower(power, config),
     apexHeight: lerp(config.apexHeightMin, config.apexHeightMax, power),
     travelDuration: lerp(config.travelDurationMin, config.travelDurationMax, power),
     collisionRadius: config.collisionRadius,
@@ -85,18 +87,42 @@ export function chargedProjectileConfig(
 }
 
 export function chargeMeterState(state: ChargeState, config: ChargeThrowConfig): ChargeMeterState {
+  const power = state.isCharging ? normalizeChargePower(state.chargePower, config) : 0;
+  const innerWidth = Math.max(0, config.chargeMeterWidth - config.chargeMeterFillPadding * 2);
+  const percent = Math.round(power * 100);
   return {
     visible: state.isCharging,
-    fillRatio: state.chargePower,
-    minimumRatio: config.minThrowPower,
-    isMax: state.isCharging && state.chargePower >= config.maxThrowPower,
-    label: state.chargePower >= config.maxThrowPower ? 'MAX' : `POWER ${Math.round(state.chargePower * 100)}%`
+    fillRatio: power,
+    fillWidth: clamp(innerWidth * power, 0, innerWidth),
+    percent,
+    minimumRatio: config.chargePercentMin,
+    isMax: state.isCharging && power >= config.chargePercentMax,
+    label: power >= config.chargePercentMax ? 'MAX 100%' : `POWER ${percent}%`
   };
+}
+
+export function getTargetYFromChargePower(
+  chargePower: number,
+  range: Pick<ChargeThrowConfig, 'chargePercentMin' | 'chargePercentMax' | 'nearTargetY' | 'farTargetY'>
+): number {
+  const power = clamp(chargePower, range.chargePercentMin, range.chargePercentMax);
+  const quantizedPower = Math.round(power * 100) / 100;
+  const powerRange = Math.max(Number.EPSILON, range.chargePercentMax - range.chargePercentMin);
+  const progress = (quantizedPower - range.chargePercentMin) / powerRange;
+  return lerp(range.nearTargetY, range.farTargetY, progress);
+}
+
+export function normalizeChargePower(chargePower: number, config: ChargeThrowConfig): number {
+  return Math.round(clamp(chargePower, config.chargePercentMin, config.chargePercentMax) * 100) / 100;
 }
 
 function normalizedChargePower(chargeTime: number, config: ChargeThrowConfig): number {
   const range = Math.max(Number.EPSILON, config.maxChargeTime - config.minChargeTime);
-  return clamp((chargeTime - config.minChargeTime) / range, 0, 1);
+  const progress = clamp((chargeTime - config.minChargeTime) / range, 0, 1);
+  return normalizeChargePower(
+    lerp(config.chargePercentMin, config.chargePercentMax, progress),
+    config
+  );
 }
 
 function lerp(start: number, end: number, progress: number): number {
