@@ -1089,6 +1089,79 @@ test('phase 15 rewards a three-person splash during the Level 4 market exit crow
   expect(consoleErrors).toEqual([]);
 });
 
+test('phase 16 exposes deterministic wind and completes a scored bouncy hit in Level 5', async ({ page }) => {
+  test.setTimeout(75_000);
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+  page.on('pageerror', (error) => consoleErrors.push(error.message));
+
+  await page.goto('/');
+  await expect(page.locator('canvas')).toHaveAttribute('data-game-ready', 'true');
+  const canvas = page.locator('canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(box!.x + box!.width * (1040 / 1280), box!.y + box!.height * (645 / 720));
+  await expect.poll(() => activeScenes(page)).toContain('GameScene');
+  let session = await levelSession(page);
+  expect(session.definition).toMatchObject({
+    id: 'level_05', seed: 'level-05-headwind-seed', availablePoopTypes: ['normal_poop', 'bouncy_poop'],
+    visual: { profile: 'windy_afternoon' }
+  });
+  await advanceLevelTime(page, 3);
+  await advanceLevelTime(page, 14);
+  await expect.poll(() => page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.windState?.warningSegmentId)).toBe('right_breeze');
+  expect(await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.windIndicatorText ?? '')).toContain('NEXT 右風 >');
+  await advanceLevelTime(page, 3);
+  await expect.poll(() => page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.windState?.direction)).toBe('right');
+
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.clearNPCSandbox?.(true));
+  await chargeThrow(page, 0.45);
+  await expect.poll(async () => (await projectileSystem(page)).projectiles.length).toBe(1);
+  const windyProjectile = (await projectileSystem(page)).projectiles[0];
+  expect(windyProjectile.windAccelerationX).toBeGreaterThan(0);
+  await expect.poll(async () => (await projectileShadows(page)).length).toBe(1);
+  const shadow = (await projectileShadows(page))[0];
+  const active = (await projectileSystem(page)).projectiles[0];
+  expect(shadow.x).toBeCloseTo(active.position.x, 0);
+  await expect.poll(async () => (await projectileSystem(page)).projectiles.length, { timeout: 12_000 }).toBe(0);
+
+  await advanceLevelTime(page, 25);
+  await expect.poll(() => page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.windState?.direction)).toBe('calm');
+
+  await page.keyboard.press('KeyE');
+  await expect.poll(async () => (await poopInventory(page)).selectedPoopType).toBe('bouncy_poop');
+  const rantsBefore = (await gameplayEvents(page)).filter((event) => event.type === 'NPC_RANT_STARTED').length;
+  const calmPlayerX = (await playerState(page)).x;
+  await page.evaluate(({ x }) => {
+    const debug = window.__SHIMING_BIDA_DEBUG__;
+    debug?.clearNPCSandbox?.(true);
+    for (const offset of [200, 225, 250]) debug?.spawnNPCSandbox?.('office_worker', x + offset, 'back_shop');
+  }, { x: calmPlayerX });
+  await chargeThrow(page, 1);
+  await expect.poll(async () => (await projectileSystem(page)).projectiles[0]?.bounceCount, { timeout: 12_000 }).toBe(1);
+  await expect.poll(async () =>
+    (await gameplayEvents(page)).filter((event) => event.type === 'NPC_RANT_STARTED').length - rantsBefore,
+  { timeout: 12_000 }).toBe(1);
+  expect((await levelSession(page)).metrics.interactionCounts?.bounced_hit).toBe(1);
+  expect((await scoreState(page)).totalScore).toBeGreaterThan(0);
+  expect(await projectileShadows(page)).toHaveLength(0);
+
+  session = await levelSession(page);
+  await advanceLevelTime(page, session.remainingSeconds - 28);
+  await expect.poll(async () => (await levelSession(page)).triggeredEventIds).toEqual([
+    'climax_fast_rush', 'climax_strong_wind'
+  ]);
+  await expect.poll(() => page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.windState?.activeSegmentId)).toBe('climax_gale');
+  expect((await npcSpawner(page)).npcs.length).toBeLessThanOrEqual(16);
+  await page.screenshot({ path: 'docs/evidence/phase-16-level-05-wind-bounce.png', fullPage: true });
+
+  await advanceLevelTime(page, 28);
+  await expect.poll(async () => (await levelSession(page)).phase).toBe('settled');
+  expect((await levelSession(page)).completionCount).toBe(1);
+  await expect.poll(() => hudResultText(page)).toContain('時間到');
+  expect(consoleErrors).toEqual([]);
+});
+
 test('phase 12 settles Level 1 success once from legal normal-poop scoring', async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto('/');
@@ -1302,6 +1375,7 @@ type ProjectileDebugState = {
   bounceCount: number;
   generation: number;
   parentId?: number;
+  windAccelerationX: number;
 };
 
 async function projectileSystem(page: Page): Promise<{
@@ -1328,7 +1402,8 @@ async function projectileSystem(page: Page): Promise<{
         originX: projectile.trajectory.origin.x,
         bounceCount: projectile.bounceCount,
         generation: projectile.generation,
-        parentId: projectile.parentId
+        parentId: projectile.parentId,
+        windAccelerationX: projectile.trajectory.windAccelerationX
       })),
       recycledCount: state.recycledCount,
       bouncedCount: state.bouncedCount,

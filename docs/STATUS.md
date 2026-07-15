@@ -6,17 +6,17 @@ Codex must not set any phase to `PASS`.
 
 ## Current Phase
 
-- Phase: 15
-- Name: Level 4 - Market closing
+- Phase: 16
+- Name: Level 5 - Headwind delivery
 - Status: READY_FOR_REVIEW
-- Updated: 2026-07-15
+- Updated: 2026-07-16
 
 ## Current Audit
 
-- Audit: Prompt 14 - Level 3 Umbrella Defense
+- Audit: Prompt 15 - Level 4 Market Closing
 - Status: PASS (user-provided prerequisite)
-- Evidence: `docs/evidence/PHASE_14.md`
-- Prompt 16 remains `NOT_STARTED`.
+- Evidence: `docs/evidence/PHASE_15.md`
+- Prompt 17 remains `NOT_STARTED`.
 
 ## Audit History
 
@@ -170,7 +170,7 @@ Codex must not set any phase to `PASS`.
 | 13 | READY_FOR_REVIEW | `docs/evidence/PHASE_13.md` |
 | 14 | READY_FOR_REVIEW | `docs/evidence/PHASE_14.md` |
 | 15 | READY_FOR_REVIEW | `docs/evidence/PHASE_15.md` |
-| 16 | NOT_STARTED | |
+| 16 | READY_FOR_REVIEW | `docs/evidence/PHASE_16.md` |
 | 17 | NOT_STARTED | |
 | 18 | NOT_STARTED | |
 | 19 | NOT_STARTED | |

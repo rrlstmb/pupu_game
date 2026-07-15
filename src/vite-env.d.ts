@@ -15,6 +15,7 @@ import type { NPCViewPoolStats } from './systems/npc/PhaserNPCSystem';
 import type { ScoreState } from './domain/score/ScoreCalculator';
 import type { GameConfig } from './runtime/GameConfig';
 import type { LevelSession } from './domain/level/LevelDirector';
+import type { WindState } from './domain/wind/WindSystem';
 
 declare global {
   interface Window {
@@ -52,6 +53,8 @@ declare global {
       actualLanding?: { readonly x: number; readonly y: number };
       landingError?: number;
       windAccelerationX?: number;
+      windState?: WindState;
+      windIndicatorText?: string;
       aimAssistVisible?: boolean;
       chargeState?: ChargeState;
       chargeMeterVisible?: boolean;

@@ -218,6 +218,14 @@ Depth constants live in `src/domain/layout/Depth.ts`.
 - Ordinary poop sorts valid candidates by landing distance, lane distance, then stable NPC id and resolves at most one target. Area poop retains its own bounded strategy after the primary landing candidate is selected.
 - `src/data/hitDetectionConfig.ts` owns multipliers, padding clamps, lane tolerance, bounds behavior, target cap, and tie-break policy.
 
+## Wind and Timed Events
+
+- `src/domain/wind/WindSystem.ts` resolves deterministic calm/warning/active wind from validated level data and remaining game time.
+- Wind changes only projectile ground-projection X; charged target Y remains owned by `ChargeSystem`.
+- Phaser wind UI is presentation-only and never predicts a path or landing point.
+- Timed events declare a channel, priority, and merge strategy. Cross-channel events coexist; same-channel selection uses priority then authored order.
+- Bounce surfaces are level data. `ProjectileSystem` owns bounce count and surface identity; scenes only render the authored placeholder bounds.
+
 - Score calculation lives in pure domain code under `src/domain/score`.
 - Score rules live in `src/data/scoreRules.ts` and include base scores, precision grades, combo thresholds, repeat-hit multipliers, miss penalty, and default phase multipliers.
 - The Phase 07 formula is base score x poop adaptation x combo multiplier x precision multiplier x risk multiplier x repeat-hit multiplier + special event score.

@@ -33,6 +33,7 @@ export const LEVEL_02 = loadLevelDefinition({
     id: 'final_20_second_rush',
     triggerAtRemainingSeconds: 20,
     once: true,
+    channel: 'spawnChannel', priority: 10, mergeStrategy: 'replace',
     spawn: {
       intervalSeconds: 0.45,
       spawnXPadding: 72,

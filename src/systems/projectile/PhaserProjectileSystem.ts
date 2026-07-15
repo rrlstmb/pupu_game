@@ -7,6 +7,7 @@ import {
   updateProjectileSystem,
   recycleProjectilesById,
   type Projectile,
+  type BounceSurface,
   type ProjectileSystemState
 } from '../../domain/projectile/ProjectileSystem';
 import type { Vector2 } from '../../domain/projectile/ProjectileTrajectory';
@@ -45,7 +46,8 @@ export class PhaserProjectileSystem {
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly groundY: number,
-    private config: ProjectileConfig
+    private config: ProjectileConfig,
+    private readonly bounceSurfaces: readonly BounceSurface[] = []
   ) {}
 
   setConfig(config: ProjectileConfig): void {
@@ -84,7 +86,13 @@ export class PhaserProjectileSystem {
   }
 
   update(deltaSeconds: number, predictedLanding?: Vector2): void {
-    const update = updateProjectileSystem(this.state, deltaSeconds, this.groundY, this.config);
+    const update = updateProjectileSystem(
+      this.state,
+      deltaSeconds,
+      this.groundY,
+      this.config,
+      this.bounceSurfaces.length > 0 ? this.bounceSurfaces : undefined
+    );
     this.state = update.state;
     this.lastNaturalRecycleCount = update.recycled.length;
     this.lastNaturalRecycled = [...update.recycled];

@@ -106,7 +106,7 @@ export function resolveProjectileNPCHits(
                   poopType: projectile.poopType,
                   impactDistance,
                   interactionScoreDelta: interaction.scoreDelta,
-                  interactionTags: interaction.tags
+                  interactionTags: projectile.bounceCount > 0 ? [...interaction.tags, 'bounced_hit'] : interaction.tags
                 },
                 activeEffects: stickyEffect
                   ? [...candidate.activeEffects.filter((effect) => effect.poopType !== stickyEffect.poopType), stickyEffect]
@@ -127,7 +127,7 @@ export function resolveProjectileNPCHits(
           impactDistance,
           interactionAlertDelta: interaction.alertDelta,
           interactionScoreDelta: interaction.scoreDelta,
-          interactionTags: interaction.tags
+          interactionTags: projectile.bounceCount > 0 ? [...interaction.tags, 'bounced_hit'] : interaction.tags
         });
       }
       break;

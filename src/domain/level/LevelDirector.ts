@@ -31,13 +31,22 @@ export type LevelSession = {
 };
 
 export function spawnConfigForLevel(definition: LevelDefinition, session?: LevelSession): NPCSpawnConfig {
-  const activeEvent = session
-    ? [...definition.events].reverse().find((event) => session.triggeredEventIds.includes(event.id))
-    : undefined;
+  const activeEvent = session ? activeEventForChannel(definition, session, 'spawnChannel') : undefined;
   return {
     seed: definition.seed,
     ...(activeEvent?.spawn ?? definition.spawn)
   };
+}
+
+export function activeEventForChannel(
+  definition: LevelDefinition,
+  session: LevelSession,
+  channel: LevelDefinition['events'][number]['channel']
+) {
+  return definition.events
+    .map((event, authoredIndex) => ({ event, authoredIndex }))
+    .filter(({ event }) => event.channel === channel && session.triggeredEventIds.includes(event.id))
+    .sort((left, right) => right.event.priority - left.event.priority || right.authoredIndex - left.authoredIndex)[0]?.event;
 }
 
 export function createLevelSession(definition: LevelDefinition, attempt = 1): LevelSession {

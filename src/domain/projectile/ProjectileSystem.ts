@@ -14,7 +14,13 @@ export const PROJECTILE_SAFETY_LIMITS = {
 } as const;
 
 export type BounceSurface = {
-  readonly y: number;
+  readonly id?: string;
+  readonly bounds?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+  readonly normal?: Vector2;
+  readonly bounceCoefficient?: number;
+  readonly enabled?: boolean;
+  readonly allowedPoopTags?: readonly string[];
+  readonly y?: number;
   readonly tag: SurfaceTag;
 };
 
@@ -27,6 +33,7 @@ export type Projectile = {
   readonly parentId?: number;
   readonly bounceCount: number;
   readonly hasSplit: boolean;
+  readonly lastSurfaceId?: string;
   readonly trajectory: TrajectoryInput;
   readonly ageSeconds: number;
   readonly previousPosition: TrajectoryPoint;
@@ -94,7 +101,8 @@ export function fireProjectile(
     apexHeight: config.apexHeight,
     travelDuration: config.travelDuration,
     windAffectX: config.windAffectX,
-    windAffectY: config.windAffectY
+    windAffectY: config.windAffectY,
+    windMaxHorizontalOffset: config.windMaxHorizontalOffset
   };
   const initial = trajectoryStateAt(trajectory, 0);
   const projectile: Projectile = {
@@ -183,7 +191,8 @@ export function updateProjectileSystem(
           apexHeight: projectile.trajectory.apexHeight * 0.45,
           travelDuration: Math.max(0.2, projectile.trajectory.travelDuration - splitAt),
           windAffectX: projectile.trajectory.windAffectX,
-          windAffectY: projectile.trajectory.windAffectY
+          windAffectY: projectile.trajectory.windAffectY,
+          windMaxHorizontalOffset: projectile.trajectory.windMaxHorizontalOffset
         };
         const childInitial = trajectoryStateAt(childTrajectory, 0);
         const child: Projectile = {
@@ -221,8 +230,14 @@ export function updateProjectileSystem(
     }
 
     const completedProjection = ageSeconds >= projectile.trajectory.travelDuration;
-    const crossedSurface = completedProjection
-      ? surfaces.find((surface) => projectile.rules.bounceSurfaceTags.includes(surface.tag))
+    const completedPosition = completedProjection
+      ? trajectoryStateAt(projectile.trajectory, projectile.trajectory.travelDuration).groundProjection
+      : undefined;
+    const crossedSurface = completedPosition
+      ? surfaces.find((surface) => surface.enabled !== false && (!surface.id || surface.id !== projectile.lastSurfaceId) &&
+        projectile.rules.bounceSurfaceTags.includes(surface.tag) &&
+        (!surface.allowedPoopTags || surface.allowedPoopTags.includes(surface.tag)) &&
+        pointInsideSurface(completedPosition, surface))
       : undefined;
 
     if (crossedSurface && projectile.bounceCount < projectile.rules.maxBounces) {
@@ -236,16 +251,17 @@ export function updateProjectileSystem(
         origin: bouncePosition,
         initialVelocity: {
           x: incomingVelocity.x,
-          y: -Math.abs(incomingVelocity.y) * projectile.rules.bounceRestitution
+          y: -Math.abs(incomingVelocity.y) * (crossedSurface.bounceCoefficient ?? projectile.rules.bounceRestitution)
         },
         gravity: projectile.trajectory.gravity,
         windAccelerationX: projectile.trajectory.windAccelerationX,
         startProjectionY: bouncePosition.y,
         targetProjectionY: bouncePosition.y,
-        apexHeight: projectile.trajectory.apexHeight * projectile.rules.bounceRestitution,
-        travelDuration: projectile.trajectory.travelDuration * projectile.rules.bounceRestitution,
+        apexHeight: projectile.trajectory.apexHeight * (crossedSurface.bounceCoefficient ?? projectile.rules.bounceRestitution),
+        travelDuration: projectile.trajectory.travelDuration * (crossedSurface.bounceCoefficient ?? projectile.rules.bounceRestitution),
         windAffectX: projectile.trajectory.windAffectX,
-        windAffectY: projectile.trajectory.windAffectY
+        windAffectY: projectile.trajectory.windAffectY,
+        windMaxHorizontalOffset: projectile.trajectory.windMaxHorizontalOffset
       };
       const bounceInitial = trajectoryStateAt(trajectory, 0);
       projectiles.push({
@@ -256,7 +272,8 @@ export function updateProjectileSystem(
         position: bounceInitial.groundProjection,
         previousVisualPosition: bounceInitial.visualPosition,
         visualPosition: bounceInitial.visualPosition,
-        bounceCount: projectile.bounceCount + 1
+        bounceCount: projectile.bounceCount + 1,
+        lastSurfaceId: crossedSurface.id ?? crossedSurface.tag
       });
       bouncedCount += 1;
       continue;
@@ -322,6 +339,12 @@ export function updateProjectileSystem(
     recycled,
     spawned
   };
+}
+
+function pointInsideSurface(point: Vector2, surface: BounceSurface): boolean {
+  if (!surface.bounds) return true;
+  return point.x >= surface.bounds.x && point.x <= surface.bounds.x + surface.bounds.width &&
+    point.y >= surface.bounds.y && point.y <= surface.bounds.y + surface.bounds.height;
 }
 
 export function recycleProjectilesById(

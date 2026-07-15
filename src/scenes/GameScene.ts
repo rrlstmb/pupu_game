@@ -62,7 +62,7 @@ import {
   type PoopInventoryState
 } from '../domain/poop/PoopInventory';
 import { projectileRulesFor } from '../domain/poop/PoopBehaviorStrategy';
-import type { Projectile } from '../domain/projectile/ProjectileSystem';
+import type { BounceSurface, Projectile } from '../domain/projectile/ProjectileSystem';
 import {
   cancelCharge,
   chargedProjectileConfig,
@@ -72,6 +72,7 @@ import {
 } from '../domain/projectile/ChargeSystem';
 import type { TrajectoryInput, Vector2 } from '../domain/projectile/ProjectileTrajectory';
 import { SeededRng } from '../domain/random/SeededRng';
+import { CALM_WIND_STATE, resolveWindState, type WindState } from '../domain/wind/WindSystem';
 import {
   applyMissPenalty,
   createScoreState,
@@ -89,6 +90,7 @@ import { PhaserNPCSystem } from '../systems/npc/PhaserNPCSystem';
 import { AimAssist } from '../systems/projectile/AimAssist';
 import { PhaserProjectileSystem } from '../systems/projectile/PhaserProjectileSystem';
 import { PhaserChargeMeter } from '../systems/projectile/PhaserChargeMeter';
+import { PhaserWindIndicator } from '../systems/wind/PhaserWindIndicator';
 
 export class GameScene extends Phaser.Scene {
   private levelDefinition: LevelDefinition = LEVEL_01;
@@ -97,6 +99,9 @@ export class GameScene extends Phaser.Scene {
   private projectileSystem!: PhaserProjectileSystem;
   private aimAssist!: AimAssist;
   private chargeMeter!: PhaserChargeMeter;
+  private windIndicator!: PhaserWindIndicator;
+  private windState: WindState = CALM_WIND_STATE;
+  private debugWindAccelerationX?: number;
   private npcSystem!: PhaserNPCSystem;
   private npcSpawnerState!: NPCSpawnerState;
   private npcRng = new SeededRng(this.levelDefinition.seed);
@@ -146,6 +151,8 @@ export class GameScene extends Phaser.Scene {
     this.environmentalEffects = createEnvironmentalEffectState();
     this.projectileConfig = NORMAL_POOP_PROJECTILE_CONFIG;
     this.chargeState = createChargeState();
+    this.windState = CALM_WIND_STATE;
+    this.debugWindAccelerationX = undefined;
     this.lastLandingHitDebug = undefined;
     this.npcRng = new SeededRng(this.levelSession.definition.seed);
     this.isGameOver = false;
@@ -154,9 +161,13 @@ export class GameScene extends Phaser.Scene {
     this.inputAdapter = new InputAdapter(this);
     this.playerState = createInitialPlayerState(this.layout.rooftop);
     this.alertState = createAlertState(this.playerState.x);
-    this.projectileSystem = new PhaserProjectileSystem(this, this.projectileGroundY(), this.projectileConfig);
+    this.projectileSystem = new PhaserProjectileSystem(
+      this, this.projectileGroundY(), this.projectileConfig, this.levelBounceSurfaces()
+    );
     this.aimAssist = new AimAssist(this);
     this.chargeMeter = new PhaserChargeMeter(this, THROW_CHARGE_CONFIG);
+    this.windIndicator = new PhaserWindIndicator(this, GAME_CONFIG.width - 285, 82);
+    this.windIndicator.sync(this.windState);
     this.npcSystem = new PhaserNPCSystem(this, NPC_DEFINITIONS);
     this.npcSpawnerState = createNPCSpawnerState();
     emitSceneReady(this);
@@ -262,6 +273,7 @@ export class GameScene extends Phaser.Scene {
       this.projectileSystem.dispose();
       this.aimAssist.dispose();
       this.chargeMeter.dispose();
+      this.windIndicator.dispose();
       this.npcSystem.dispose();
       this.scrollingLayers.length = 0;
       this.debugOverlay?.destroy(true);
@@ -360,9 +372,12 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const selectedDefinition = poopDefinitionById(selectedPoopType(this.poopInventory));
+    this.windState = resolveWindState(this.levelDefinition.wind, this.levelSession.remainingSeconds, selectedDefinition.id);
+    this.windIndicator.sync(this.windState);
     this.projectileConfig = {
       ...selectedDefinition.projectile,
-      windAccelerationX: this.projectileConfig.windAccelerationX
+      windAccelerationX: this.debugWindAccelerationX ?? this.windState.accelerationX,
+      windMaxHorizontalOffset: this.levelDefinition.wind?.maxHorizontalOffset ?? selectedDefinition.projectile.windMaxHorizontalOffset
     };
     this.projectileSystem.setConfig(this.projectileConfig);
     this.projectileSystem.setDebugVisible(this.debugOverlayVisible);
@@ -697,18 +712,30 @@ export class GameScene extends Phaser.Scene {
     this.renderLanes(layout.lanes);
     this.renderRooftop(layout);
     this.renderWeather(layout);
+    this.renderBounceSurfaces();
     this.renderDebugOverlay(layout);
   }
 
   private renderWeather(layout: WorldLayout): void {
     const weather = this.levelDefinition.visual.weather;
-    if (weather.kind !== 'rain') return;
+    if (weather.kind !== 'rain' && this.levelDefinition.visual.profile !== 'windy_afternoon') return;
     for (let index = 0; index < weather.streakCount; index += 1) {
       const x = ((index * 97) % layout.width) + 18;
       const y = ((index * 53) % layout.height) + 12;
       this.add.line(0, 0, x, y, x - 9, y + 28, weather.streakColor, weather.streakAlpha)
         .setOrigin(0, 0)
         .setDepth(Depths.particles - 2);
+    }
+  }
+
+  private renderBounceSurfaces(): void {
+    for (const surface of this.levelDefinition.bounceSurfaces ?? []) {
+      const view = this.add.rectangle(
+        surface.bounds.x, surface.bounds.y, surface.bounds.width, surface.bounds.height, 0xfbbf24, 0.88
+      ).setOrigin(0, 0).setDepth(Depths.alleyBack + 16);
+      this.add.text(surface.bounds.x + surface.bounds.width / 2, surface.bounds.y + surface.bounds.height / 2, 'BOUNCE SIGN', {
+        fontFamily: 'monospace', fontSize: '14px', color: '#422006'
+      }).setOrigin(0.5).setDepth(view.depth + 1);
     }
   }
 
@@ -870,7 +897,8 @@ export class GameScene extends Phaser.Scene {
       apexHeight: config.apexHeight,
       travelDuration: config.travelDuration,
       windAffectX: config.windAffectX,
-      windAffectY: config.windAffectY
+      windAffectY: config.windAffectY,
+      windMaxHorizontalOffset: config.windMaxHorizontalOffset
     };
   }
 
@@ -885,13 +913,26 @@ export class GameScene extends Phaser.Scene {
     return this.layout.rooftop.y + THROW_WORLD_CONFIG.landingPlaneOffsetY;
   }
 
+  private levelBounceSurfaces(): readonly BounceSurface[] {
+    return (this.levelDefinition.bounceSurfaces ?? []).map((surface) => ({
+      id: surface.id,
+      bounds: surface.bounds,
+      normal: surface.normal,
+      bounceCoefficient: surface.bounceCoefficient,
+      enabled: surface.enabled,
+      allowedPoopTags: surface.allowedPoopTags,
+      tag: 'sign'
+    }));
+  }
+
   private setWindAcceleration(windAccelerationX: number): void {
+    this.debugWindAccelerationX = Math.max(
+      -THROW_WORLD_CONFIG.debugWindLimit,
+      Math.min(THROW_WORLD_CONFIG.debugWindLimit, windAccelerationX)
+    );
     this.projectileConfig = {
       ...this.projectileConfig,
-      windAccelerationX: Math.max(
-        -THROW_WORLD_CONFIG.debugWindLimit,
-        Math.min(THROW_WORLD_CONFIG.debugWindLimit, windAccelerationX)
-      )
+      windAccelerationX: this.debugWindAccelerationX
     };
     this.projectileSystem.setConfig(this.projectileConfig);
   }
@@ -996,6 +1037,8 @@ export class GameScene extends Phaser.Scene {
     window.__SHIMING_BIDA_DEBUG__.actualLanding = this.projectileSystem.getLastLanding();
     window.__SHIMING_BIDA_DEBUG__.landingError = this.projectileSystem.getActualLandingError();
     window.__SHIMING_BIDA_DEBUG__.windAccelerationX = this.projectileConfig.windAccelerationX;
+    window.__SHIMING_BIDA_DEBUG__.windState = this.windState;
+    window.__SHIMING_BIDA_DEBUG__.windIndicatorText = this.windIndicator.snapshot();
     window.__SHIMING_BIDA_DEBUG__.aimAssistVisible = this.aimAssist.isVisible();
     window.__SHIMING_BIDA_DEBUG__.chargeState = this.chargeState;
     window.__SHIMING_BIDA_DEBUG__.chargeMeterVisible = this.chargeMeter.isVisible();
@@ -1082,6 +1125,8 @@ export class GameScene extends Phaser.Scene {
     delete debug.actualLanding;
     delete debug.landingError;
     delete debug.windAccelerationX;
+    delete debug.windState;
+    delete debug.windIndicatorText;
     delete debug.aimAssistVisible;
     delete debug.chargeState;
     delete debug.chargeMeterVisible;

@@ -14,6 +14,7 @@ export type TrajectoryInput = {
   readonly travelDuration: number;
   readonly windAffectX: number;
   readonly windAffectY: number;
+  readonly windMaxHorizontalOffset?: number;
 };
 
 export type TrajectoryPoint = Vector2 & {
@@ -44,9 +45,12 @@ export function groundProjectionAt(input: TrajectoryInput, time: number): Trajec
   const progress = trajectoryProgress(input, t);
   const windY = 0.5 * input.windAccelerationX * input.windAffectY * t * t;
 
+  const rawWindOffsetX = 0.5 * input.windAccelerationX * input.windAffectX * t * t;
+  const maxWindOffset = input.windMaxHorizontalOffset ?? Number.POSITIVE_INFINITY;
+  const windOffsetX = Math.max(-maxWindOffset, Math.min(maxWindOffset, rawWindOffsetX));
   return {
     time: t,
-    x: input.origin.x + input.initialVelocity.x * t + 0.5 * input.windAccelerationX * input.windAffectX * t * t,
+    x: input.origin.x + input.initialVelocity.x * t + windOffsetX,
     y: lerp(input.startProjectionY, input.targetProjectionY, progress) + windY
   };
 }

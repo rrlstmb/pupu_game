@@ -33,6 +33,7 @@ export const LEVEL_04 = loadLevelDefinition({
     id: 'market_exit_crowd',
     triggerAtRemainingSeconds: 20,
     once: true,
+    channel: 'spawnChannel', priority: 10, mergeStrategy: 'replace',
     spawn: {
       intervalSeconds: 0.4,
       spawnXPadding: 72,

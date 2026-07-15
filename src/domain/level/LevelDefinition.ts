@@ -12,7 +12,7 @@ export type LevelSpawnDefinition = {
 };
 
 export type LevelVisualDefinition = {
-  readonly profile: 'day' | 'evening' | 'rainy' | 'market_evening';
+  readonly profile: 'day' | 'evening' | 'rainy' | 'market_evening' | 'windy_afternoon';
   readonly skylineColor: number;
   readonly alleyColor: number;
   readonly rooftopColor: number;
@@ -24,11 +24,46 @@ export type LevelVisualDefinition = {
   };
 };
 
+export type WindDirection = 'left' | 'right' | 'calm';
+export type WindSegment = {
+  readonly id: string;
+  readonly startAtRemainingSeconds: number;
+  readonly durationSeconds: number;
+  readonly direction: WindDirection;
+  readonly strength: number;
+  readonly warningSeconds: number;
+  readonly transitionSeconds?: number;
+};
+
+export type LevelWindDefinition = {
+  readonly influenceCoefficient: number;
+  readonly maxHorizontalOffset: number;
+  readonly transitionSmoothing: number;
+  readonly resistanceByPoopType: Readonly<Record<PoopType, number>>;
+  readonly segments: readonly WindSegment[];
+};
+
+export type BounceSurfaceDefinition = {
+  readonly id: string;
+  readonly bounds: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+  readonly normal: { readonly x: number; readonly y: number };
+  readonly enabled: boolean;
+  readonly allowedPoopTags: readonly string[];
+  readonly bounceCoefficient: number;
+};
+
+export type EventChannel = 'spawnChannel' | 'windChannel' | 'presentationChannel' | 'hazardChannel';
+
 export type LevelTimedEvent = {
   readonly id: string;
   readonly triggerAtRemainingSeconds: number;
   readonly once: true;
-  readonly spawn: LevelSpawnDefinition;
+  readonly channel: EventChannel;
+  readonly priority: number;
+  readonly mergeStrategy: 'replace' | 'merge' | 'exclusive';
+  readonly spawn?: LevelSpawnDefinition;
+  readonly windSegmentId?: string;
+  readonly presentationCue?: string;
 };
 
 export type LevelStarCondition =
@@ -51,6 +86,8 @@ export type LevelDefinition = {
   readonly visual: LevelVisualDefinition;
   readonly spawn: LevelSpawnDefinition;
   readonly events: readonly LevelTimedEvent[];
+  readonly wind?: LevelWindDefinition;
+  readonly bounceSurfaces?: readonly BounceSurfaceDefinition[];
   readonly stars: readonly LevelStarCondition[];
 };
 
@@ -92,6 +129,8 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
   validateSpawn(input.spawn, errors);
   validateVisual(input.visual, errors);
   validateEvents(input.events, input.durationSeconds, errors);
+  validateWind(input.wind, input.durationSeconds, errors);
+  validateBounceSurfaces(input.bounceSurfaces, errors);
   validateStars(input.stars, errors);
   validateScoreTargetConsistency(input, errors);
   return errors.length > 0
@@ -173,7 +212,7 @@ function validateStars(input: unknown, errors: string[]): void {
 }
 
 function validateVisual(input: unknown, errors: string[]): void {
-  if (!isRecord(input) || !['day', 'evening', 'rainy', 'market_evening'].includes(String(input.profile))) {
+  if (!isRecord(input) || !['day', 'evening', 'rainy', 'market_evening', 'windy_afternoon'].includes(String(input.profile))) {
     errors.push('visual must define a supported profile');
     return;
   }
@@ -205,7 +244,57 @@ function validateEvents(input: unknown, duration: unknown, errors: string[]): vo
       event.triggerAtRemainingSeconds < 0 || typeof duration !== 'number' || event.triggerAtRemainingSeconds >= duration) {
       errors.push(`${event.id} must be once and trigger within the level duration`);
     }
-    validateSpawn(event.spawn, errors);
+    if (!['spawnChannel', 'windChannel', 'presentationChannel', 'hazardChannel'].includes(String(event.channel)) ||
+      !['replace', 'merge', 'exclusive'].includes(String(event.mergeStrategy)) || !Number.isInteger(event.priority)) {
+      errors.push(`${event.id} must define channel, integer priority, and mergeStrategy`);
+    }
+    if (event.channel === 'spawnChannel') validateSpawn(event.spawn, errors);
+    if (event.channel === 'windChannel' && (typeof event.windSegmentId !== 'string' || event.windSegmentId === '')) {
+      errors.push(`${event.id} windChannel requires windSegmentId`);
+    }
+  }
+}
+
+function validateWind(input: unknown, duration: unknown, errors: string[]): void {
+  if (input === undefined) return;
+  if (!isRecord(input) || !isPositiveNumber(input.influenceCoefficient) || !isPositiveNumber(input.maxHorizontalOffset) ||
+    typeof input.transitionSmoothing !== 'number' || input.transitionSmoothing < 0 || input.transitionSmoothing > 1 ||
+    !isRecord(input.resistanceByPoopType) || !Array.isArray(input.segments)) {
+    errors.push('wind must define influence, max offset, smoothing, resistances, and segments');
+    return;
+  }
+  for (const type of POOP_TYPES) {
+    const resistance = input.resistanceByPoopType[type];
+    if (typeof resistance !== 'number' || resistance < 0 || resistance > 1) errors.push(`wind resistance missing for ${type}`);
+  }
+  const ids = new Set<string>();
+  for (const segment of input.segments) {
+    if (!isRecord(segment) || typeof segment.id !== 'string' || ids.has(segment.id) ||
+      !['left', 'right', 'calm'].includes(String(segment.direction)) ||
+      typeof segment.startAtRemainingSeconds !== 'number' || segment.startAtRemainingSeconds < 0 ||
+      typeof duration !== 'number' || segment.startAtRemainingSeconds >= duration ||
+      !isPositiveNumber(segment.durationSeconds) || typeof segment.strength !== 'number' || segment.strength < 0 || segment.strength > 1 ||
+      typeof segment.warningSeconds !== 'number' || segment.warningSeconds < 0) {
+      errors.push('wind segments must be unique, bounded, and valid');
+      continue;
+    }
+    ids.add(segment.id);
+  }
+}
+
+function validateBounceSurfaces(input: unknown, errors: string[]): void {
+  if (input === undefined) return;
+  if (!Array.isArray(input)) {
+    errors.push('bounceSurfaces must be an array');
+    return;
+  }
+  for (const surface of input) {
+    if (!isRecord(surface) || typeof surface.id !== 'string' || !isRecord(surface.bounds) ||
+      !isPositiveNumber(surface.bounds.width) || !isPositiveNumber(surface.bounds.height) ||
+      !isRecord(surface.normal) || typeof surface.normal.x !== 'number' || typeof surface.normal.y !== 'number' ||
+      surface.enabled !== true || !Array.isArray(surface.allowedPoopTags) || !isPositiveNumber(surface.bounceCoefficient)) {
+      errors.push('bounceSurfaces entries must define id, bounds, normal, tags, and coefficient');
+    }
   }
 }
 

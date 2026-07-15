@@ -94,7 +94,7 @@ export const POOP_DEFINITIONS: readonly PoopDefinition[] = [
       kind: 'bouncy',
       maxBounces: 1,
       bounceRestitution: 0.58,
-      bounceSurfaceTags: ['rooftop_floor']
+      bounceSurfaceTags: ['rooftop_floor', 'sign']
     }
   },
   {

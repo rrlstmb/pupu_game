@@ -33,6 +33,7 @@ export const LEVEL_03 = loadLevelDefinition({
     id: 'matching_company_umbrella_group',
     triggerAtRemainingSeconds: 25,
     once: true,
+    channel: 'spawnChannel', priority: 10, mergeStrategy: 'replace',
     spawn: {
       intervalSeconds: 0.5,
       spawnXPadding: 72,

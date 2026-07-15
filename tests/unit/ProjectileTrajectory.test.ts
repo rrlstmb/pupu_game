@@ -59,4 +59,11 @@ describe('ProjectileTrajectory ground projection and visual arc', () => {
     expect(landing.x).toBeCloseTo(784.15, 2);
     expect(landing.y).toBe(230);
   });
+
+  it('clamps wind offset while preserving the authored target Y', () => {
+    const windy = { ...input, windAccelerationX: 10_000, windMaxHorizontalOffset: 80 };
+    const landing = groundProjectionAt(windy, windy.travelDuration);
+    expect(landing.x).toBe(720);
+    expect(landing.y).toBe(input.targetProjectionY);
+  });
 });

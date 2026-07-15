@@ -22,6 +22,7 @@ export type ProjectileConfig = {
   readonly topLaneReachPadding: number;
   readonly windAffectX: number;
   readonly windAffectY: number;
+  readonly windMaxHorizontalOffset: number;
 };
 
 export type ChargeThrowConfig = {
@@ -62,6 +63,8 @@ export type TargetYRange = {
   readonly nearY: number;
 };
 
+const THROW_WORLD_WIND_MAX_OFFSET = 360;
+
 export const NORMAL_POOP_PROJECTILE_CONFIG: ProjectileConfig = {
   gravity: 980,
   windAccelerationX: 0,
@@ -85,7 +88,8 @@ export const NORMAL_POOP_PROJECTILE_CONFIG: ProjectileConfig = {
   aimAssistSampleCount: 32,
   topLaneReachPadding: 24,
   windAffectX: 1,
-  windAffectY: 0
+  windAffectY: 0,
+  windMaxHorizontalOffset: THROW_WORLD_WIND_MAX_OFFSET
 };
 
 export const THROW_CHARGE_CONFIG: ChargeThrowConfig = {
