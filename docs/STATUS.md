@@ -13,9 +13,9 @@ Codex must not set any phase to `PASS`.
 
 ## Current Audit
 
-- Audit: Pre-Prompt 13 check
-- Status: PASS (user-provided prerequisite)
-- Evidence: user-provided status in Prompt 13 request.
+- Audit: Prompt 13 Regression - Level 2 After-work Rush
+- Status: READY_FOR_REVIEW
+- Evidence: `docs/evidence/PROMPT_13_REGRESSION.md`
 - Prompt 14 remains `NOT_STARTED`.
 
 ## Audit History
@@ -29,6 +29,7 @@ Codex must not set any phase to `PASS`.
 - Prompt 04 Charge Meter and Distance Mapping Targeted Patch: `READY_FOR_REVIEW` on 2026-07-15; evidence at `docs/evidence/PHASE_04_CHARGE_MAPPING_FIX.md`.
 - Prompt 04/06 Landing Hit Window Targeted Patch: `READY_FOR_REVIEW` on 2026-07-15; evidence at `docs/evidence/PHASE_06_LANDING_HIT_WINDOW_FIX.md`.
 - Prompt 04 Vertical Charge Meter and Ground Shadow Targeted Patch: `READY_FOR_REVIEW` on 2026-07-15; evidence at `docs/evidence/PHASE_04_VERTICAL_METER_SHADOW_FIX.md`.
+- Prompt 13 Regression - Level 2 After-work Rush: `READY_FOR_REVIEW` on 2026-07-15; evidence at `docs/evidence/PROMPT_13_REGRESSION.md`.
 
 ## Baseline
 
