@@ -175,8 +175,12 @@ test('phase 04 charges on hold, throws on release, and shows no production traje
   const meterAtTwentyOne = await chargeMeter(page);
   expect(meterAtTwentyOne.label).toBe(`POWER ${meterAtTwentyOne.percent}%`);
   expect(meterAtTwentyOne.fillRatio).toBeCloseTo(meterAtTwentyOne.percent / 100, 2);
-  expect(meterAtTwentyOne.renderedFillWidth).toBeCloseTo(meterAtTwentyOne.fillWidth, 5);
-  expect(meterAtTwentyOne.fillWidth).toBeGreaterThan(initialMeter.fillWidth);
+  expect(meterAtTwentyOne.orientation).toBe('vertical');
+  expect(meterAtTwentyOne.renderedFillHeight).toBeCloseTo(meterAtTwentyOne.fillHeight, 5);
+  expect(meterAtTwentyOne.fillHeight).toBeGreaterThan(initialMeter.fillHeight);
+  expect(meterAtTwentyOne.bounds.left).toBeGreaterThan(1200);
+  expect(meterAtTwentyOne.bounds.right).toBeLessThanOrEqual(1280);
+  expect(meterAtTwentyOne.bounds.top).toBeGreaterThan(200);
   await page.screenshot({ path: 'docs/evidence/phase-04-throw-aim.png', fullPage: true });
   await expect.poll(async () => (await chargeMeter(page)).percent).toBeGreaterThanOrEqual(45);
   await page.keyboard.up('Space');
@@ -191,16 +195,45 @@ test('phase 04 charges on hold, throws on release, and shows no production traje
   await expect.poll(async () => (await chargeMeter(page)).percent, { timeout: 15_000 }).toBe(100);
   const maxMeter = await chargeMeter(page);
   expect(maxMeter).toMatchObject({ percent: 100, fillRatio: 1, isMax: true, label: 'MAX 100%' });
-  expect(maxMeter.renderedFillWidth).toBeCloseTo(maxMeter.fillWidth, 5);
+  expect(maxMeter.renderedFillHeight).toBeCloseTo(maxMeter.fillHeight, 5);
+  expect(maxMeter.fillHeight).toBeGreaterThan(meterAtTwentyOne.fillHeight);
   await page.keyboard.up('Space');
   await expect.poll(async () => (await projectileSystem(page)).projectiles.length).toBe(1);
+  await expect.poll(async () => (await projectileShadows(page)).length).toBe(1);
   const longThrow = (await projectileSystem(page)).projectiles[0];
+  const firstShadow = (await projectileShadows(page))[0];
+  expect(firstShadow.projectileId).toBe(longThrow.id);
+  await expect.poll(async () => {
+    const state = await projectileAndShadow(page);
+    if (!state) return Number.POSITIVE_INFINITY;
+    return Math.hypot(
+      state.projectile.position.x - state.shadow.x,
+      state.projectile.position.y - state.shadow.y
+    );
+  }).toBeLessThan(0.001);
+  await expect.poll(async () => {
+    const projectile = (await projectileSystem(page)).projectiles[0];
+    const shadow = (await projectileShadows(page))[0];
+    return projectile && shadow ? Math.abs(projectile.visualPosition.y - shadow.y) : 0;
+  }).toBeGreaterThan(20);
+  await page.screenshot({ path: 'docs/evidence/phase-04-projectile-shadow.png', fullPage: true });
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await levelSession(page)).phase).toBe('paused');
+  const shadowBeforePause = (await projectileShadows(page))[0];
+  await page.waitForTimeout(300);
+  expect((await projectileShadows(page))[0]).toMatchObject({
+    x: shadowBeforePause.x,
+    y: shadowBeforePause.y
+  });
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await levelSession(page)).phase).toBe('running');
   expect(longThrow.targetProjectionY).toBeLessThan(shortThrow.targetProjectionY);
   expect(longThrow.targetProjectionY).toBeLessThan(mediumThrow.targetProjectionY);
   expect(longThrow.targetProjectionY).toBeLessThan(260);
   expect(Math.abs(longThrow.position.x - playerX)).toBeLessThan(2);
   await expect.poll(() => chargeMeterVisible(page)).toBe(false);
   await expect.poll(async () => (await projectileSystem(page)).projectiles.length, { timeout: 12_000 }).toBe(0);
+  await expect.poll(async () => (await projectileShadows(page)).length).toBe(0);
 
   await page.keyboard.down('Space');
   await expect.poll(() => chargeMeterVisible(page)).toBe(true);
@@ -363,11 +396,13 @@ test('retro Gate A survives ten scene entries, pause, blur, and projectile view 
   await expect.poll(async () => (await projectileSystem(page)).projectiles.length).toBe(1);
   await expect.poll(async () => (await projectileSystem(page)).projectiles.length, { timeout: 10_000 }).toBe(0);
   const afterFirstRecycle = await projectileViewPool(page);
+  expect(afterFirstRecycle.activeShadows).toBe(afterFirstRecycle.active);
   expect(afterFirstRecycle.active).toBe(0);
   expect(afterFirstRecycle.pooled).toBeGreaterThanOrEqual(1);
 
   await chargeThrow(page, 0);
   await expect.poll(async () => (await projectileViewPool(page)).reused).toBeGreaterThanOrEqual(1);
+  expect((await projectileViewPool(page)).activeShadows).toBe((await projectileViewPool(page)).active);
   await page.screenshot({ path: 'docs/evidence/gate-a-retro.png', fullPage: true });
 });
 
@@ -1039,7 +1074,11 @@ async function chargeMeter(page: Page): Promise<{
   visible: boolean;
   fillRatio: number;
   fillWidth: number;
+  fillHeight: number;
   renderedFillWidth: number;
+  renderedFillHeight: number;
+  orientation: 'vertical';
+  bounds: { left: number; right: number; top: number; bottom: number };
   percent: number;
   isMax: boolean;
   label: string;
@@ -1048,6 +1087,20 @@ async function chargeMeter(page: Page): Promise<{
     const meter = window.__SHIMING_BIDA_DEBUG__?.chargeMeter;
     if (!meter) throw new Error('Charge meter debug state is not available');
     return meter;
+  });
+}
+
+async function projectileShadows(page: Page): Promise<readonly {
+  projectileId: number; x: number; y: number; scale: number; alpha: number;
+}[]> {
+  return page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.projectileShadows ?? []);
+}
+
+async function projectileAndShadow(page: Page) {
+  return page.evaluate(() => {
+    const projectile = window.__SHIMING_BIDA_DEBUG__?.projectileSystem?.projectiles[0];
+    const shadow = window.__SHIMING_BIDA_DEBUG__?.projectileShadows?.[0];
+    return projectile && shadow ? { projectile, shadow } : null;
   });
 }
 
@@ -1107,6 +1160,7 @@ async function projectileViewPool(page: Page): Promise<{
   readonly pooled: number;
   readonly created: number;
   readonly reused: number;
+  readonly activeShadows: number;
 }> {
   return page.evaluate(() => {
     const stats = window.__SHIMING_BIDA_DEBUG__?.projectileViewPool;
@@ -1200,16 +1254,7 @@ async function hitTokenCount(page: Page): Promise<number> {
 async function fireAtHittableNPCAndWaitForRant(page: Page, _stableOnly = true): Promise<number> {
   void _stableOnly;
   const initialRantEvents = (await gameplayEvents(page)).filter((event) => event.type === 'NPC_RANT_STARTED').length;
-  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.clearNPCSandbox?.(true));
-  await page.keyboard.down('Space');
-  await expect.poll(async () => (await chargeState(page)).chargePower).toBeGreaterThanOrEqual(0.05);
-  const power = (await chargeState(page)).chargePower;
-  const layout = await worldLayout(page);
-  if (!layout) throw new Error('World layout unavailable for controlled landing');
-  const targetY = 463 + (230 - 463) * (power - 0.01) / 0.99;
-  const laneId = [...layout.lanes].sort((left, right) => Math.abs(left.y - targetY) - Math.abs(right.y - targetY))[0].id as
-    'back_shop' | 'mid_sidewalk' | 'front_road';
-  await spawnForChargedLandingAndRelease(page, 'office_worker', 118, laneId, power);
+  await instantMinimumThrowAtSpawnedOffset(page, 'office_worker', 118, 0);
   const npcId = await waitForNewRantEvent(page, initialRantEvents, 12_000, false);
   if (npcId === null) throw new Error(`Controlled throw missed: ${JSON.stringify({ landing: await windowLandingHit(page), projectile: await projectileSystem(page), charge: await chargeState(page), inventory: await poopInventory(page) })}`);
   return npcId;

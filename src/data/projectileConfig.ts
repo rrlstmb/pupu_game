@@ -44,7 +44,14 @@ export type ChargeThrowConfig = {
   readonly chargeMeterWidth: number;
   readonly chargeMeterHeight: number;
   readonly chargeMeterFillPadding: number;
-  readonly chargeMeterPosition: { readonly x: number; readonly y: number };
+  readonly chargeMeterOrientation: 'vertical';
+  readonly chargeMeterAnchor: 'right';
+  readonly chargeMeterMarginRight: number;
+  readonly chargeMeterMarginTop: number;
+  readonly chargeMeterTextPlacement: 'left';
+  readonly chargeMeterAvoidHudPadding: number;
+  readonly chargeMeterMinVisiblePercent: number;
+  readonly chargeMeterMaxStateLabel: string;
   readonly allowDebugTrajectoryOverlay: boolean;
   readonly maxReachTopPadding: number;
   readonly cooldownAfterThrow: number;
@@ -98,10 +105,17 @@ export const THROW_CHARGE_CONFIG: ChargeThrowConfig = {
   travelDurationMin: 0.65,
   travelDurationMax: 1.55,
   collisionRadius: 11,
-  chargeMeterWidth: 280,
-  chargeMeterHeight: 20,
+  chargeMeterWidth: 28,
+  chargeMeterHeight: 210,
   chargeMeterFillPadding: 4,
-  chargeMeterPosition: { x: 640, y: 676 },
+  chargeMeterOrientation: 'vertical',
+  chargeMeterAnchor: 'right',
+  chargeMeterMarginRight: 24,
+  chargeMeterMarginTop: 270,
+  chargeMeterTextPlacement: 'left',
+  chargeMeterAvoidHudPadding: 18,
+  chargeMeterMinVisiblePercent: 1,
+  chargeMeterMaxStateLabel: 'MAX 100%',
   allowDebugTrajectoryOverlay: true,
   maxReachTopPadding: 24,
   cooldownAfterThrow: 0.45

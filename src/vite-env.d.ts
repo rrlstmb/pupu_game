@@ -55,7 +55,24 @@ declare global {
       aimAssistVisible?: boolean;
       chargeState?: ChargeState;
       chargeMeterVisible?: boolean;
-      chargeMeter?: ChargeMeterState & { readonly renderedFillWidth: number };
+      chargeMeter?: ChargeMeterState & {
+        readonly renderedFillWidth: number;
+        readonly renderedFillHeight: number;
+        readonly orientation: 'vertical';
+        readonly bounds: {
+          readonly x: number; readonly y: number;
+          readonly left: number; readonly right: number;
+          readonly top: number; readonly bottom: number;
+          readonly labelX: number; readonly labelY: number;
+        };
+      };
+      projectileShadows?: readonly {
+        readonly projectileId: number;
+        readonly x: number;
+        readonly y: number;
+        readonly scale: number;
+        readonly alpha: number;
+      }[];
       landingHit?: {
         readonly projectiles: readonly { readonly id: number; readonly x: number; readonly y: number }[];
         readonly npcs: readonly { readonly id: number; readonly x: number; readonly y: number; readonly state: string }[];

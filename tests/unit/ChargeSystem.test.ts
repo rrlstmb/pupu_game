@@ -4,6 +4,7 @@ import type { ActionSnapshot } from '../../src/domain/input/ActionState';
 import {
   cancelCharge,
   chargedProjectileConfig,
+  chargeMeterLayout,
   chargeMeterState,
   createChargeState,
   getTargetYFromChargePower,
@@ -96,12 +97,29 @@ describe('ChargeSystem', () => {
       THROW_CHARGE_CONFIG
     );
     const innerWidth = THROW_CHARGE_CONFIG.chargeMeterWidth - THROW_CHARGE_CONFIG.chargeMeterFillPadding * 2;
+    const innerHeight = THROW_CHARGE_CONFIG.chargeMeterHeight - THROW_CHARGE_CONFIG.chargeMeterFillPadding * 2;
     expect(presentation.percent).toBe(percent);
     expect(presentation.fillRatio).toBeCloseTo(chargePower, 8);
     expect(presentation.fillWidth).toBeCloseTo(innerWidth * chargePower, 8);
+    expect(presentation.fillHeight).toBeCloseTo(innerHeight * chargePower, 8);
     expect(presentation.fillWidth).toBeGreaterThanOrEqual(0);
     expect(presentation.fillWidth).toBeLessThanOrEqual(innerWidth);
+    expect(presentation.fillHeight).toBeGreaterThanOrEqual(0);
+    expect(presentation.fillHeight).toBeLessThanOrEqual(innerHeight);
     expect(presentation.label).toContain(`${percent}%`);
+  });
+
+  it('anchors a vertical meter inside the right safe area across canonical and mobile viewports', () => {
+    expect(THROW_CHARGE_CONFIG.chargeMeterOrientation).toBe('vertical');
+    expect(THROW_CHARGE_CONFIG.chargeMeterAnchor).toBe('right');
+    for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+      const layout = chargeMeterLayout(THROW_CHARGE_CONFIG, viewport);
+      expect(layout.right).toBe(viewport.width - THROW_CHARGE_CONFIG.chargeMeterMarginRight);
+      expect(layout.left).toBeGreaterThanOrEqual(0);
+      expect(layout.top).toBeGreaterThanOrEqual(THROW_CHARGE_CONFIG.chargeMeterAvoidHudPadding);
+      expect(layout.bottom).toBeLessThanOrEqual(viewport.height - THROW_CHARGE_CONFIG.chargeMeterAvoidHudPadding);
+      expect(layout.top).toBeGreaterThan(200);
+    }
   });
 
   it('maps the same clamped charge power from near Y to far Y', () => {

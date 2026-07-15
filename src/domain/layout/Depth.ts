@@ -5,6 +5,7 @@ export const Depths = {
   alleyBack: 100,
   alleyMid: 120,
   alleyFront: 140,
+  projectileShadow: 145,
   npcLaneOffset: 8,
   rooftop: 200,
   cover: 220,

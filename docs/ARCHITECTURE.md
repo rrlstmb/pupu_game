@@ -145,7 +145,9 @@ Depth constants live in `src/domain/layout/Depth.ts`.
 - Hit detection reads consecutive ground-projection segments and the data-driven collision radius; it must never read the visual sprite Y coordinate.
 - Debug-only trajectory diagnostics may sample ground and visual paths from the same pure trajectory functions; production play does not render trajectory or landing helper lines.
 - Normal throws use a pure charge state: Space press starts charging, game-time hold updates power, and release selects the data-driven target Y, apex, and travel duration before firing.
-- Charge power is quantized to the displayed 1%-100% scale. Meter label, fill width, projection target Y, visual apex, and travel duration consume that same normalized value.
+- Charge power is quantized to the displayed 1%-100% scale. Meter label, fill geometry, projection target Y, visual apex, and travel duration consume that same normalized value.
+- Charge presentation is a data-driven right-anchored vertical meter. Pure layout state computes safe bounds, and fill height grows from its fixed bottom origin using the same charge power as target Y.
+- Every active Phaser projectile view owns a pooled ground shadow. Its position is derived only from pure projectile ground projection, while visual height affects shadow scale/alpha but never collision.
 - `getTargetYFromChargePower` owns the linear mapping from the near/lower alley target at 1% to the far/top target at 100%; Phaser UI and scenes do not duplicate the mapping.
 - Charge changes projection depth only. With no wind, normal-projectile X remains the player's release X while the player continues to move horizontally.
 - Velocity is pixels per second.

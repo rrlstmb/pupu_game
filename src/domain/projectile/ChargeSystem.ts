@@ -16,10 +16,23 @@ export type ChargeMeterState = {
   readonly visible: boolean;
   readonly fillRatio: number;
   readonly fillWidth: number;
+  readonly fillHeight: number;
+  readonly fillOffsetY: number;
   readonly percent: number;
   readonly minimumRatio: number;
   readonly isMax: boolean;
   readonly label: string;
+};
+
+export type ChargeMeterLayout = {
+  readonly x: number;
+  readonly y: number;
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
+  readonly bottom: number;
+  readonly labelX: number;
+  readonly labelY: number;
 };
 
 export function createChargeState(): ChargeState {
@@ -89,15 +102,41 @@ export function chargedProjectileConfig(
 export function chargeMeterState(state: ChargeState, config: ChargeThrowConfig): ChargeMeterState {
   const power = state.isCharging ? normalizeChargePower(state.chargePower, config) : 0;
   const innerWidth = Math.max(0, config.chargeMeterWidth - config.chargeMeterFillPadding * 2);
+  const innerHeight = Math.max(0, config.chargeMeterHeight - config.chargeMeterFillPadding * 2);
   const percent = Math.round(power * 100);
   return {
     visible: state.isCharging,
     fillRatio: power,
     fillWidth: clamp(innerWidth * power, 0, innerWidth),
+    fillHeight: clamp(innerHeight * power, 0, innerHeight),
+    fillOffsetY: innerHeight / 2,
     percent,
     minimumRatio: config.chargePercentMin,
     isMax: state.isCharging && power >= config.chargePercentMax,
-    label: power >= config.chargePercentMax ? 'MAX 100%' : `POWER ${percent}%`
+    label: power >= config.chargePercentMax ? config.chargeMeterMaxStateLabel : `POWER ${Math.max(config.chargeMeterMinVisiblePercent, percent)}%`
+  };
+}
+
+export function chargeMeterLayout(
+  config: ChargeThrowConfig,
+  viewport: { readonly width: number; readonly height: number }
+): ChargeMeterLayout {
+  const x = viewport.width - config.chargeMeterMarginRight - config.chargeMeterWidth / 2;
+  const unclampedY = config.chargeMeterMarginTop + config.chargeMeterHeight / 2;
+  const y = clamp(
+    unclampedY,
+    config.chargeMeterAvoidHudPadding + config.chargeMeterHeight / 2,
+    viewport.height - config.chargeMeterAvoidHudPadding - config.chargeMeterHeight / 2
+  );
+  return {
+    x,
+    y,
+    left: x - config.chargeMeterWidth / 2,
+    right: x + config.chargeMeterWidth / 2,
+    top: y - config.chargeMeterHeight / 2,
+    bottom: y + config.chargeMeterHeight / 2,
+    labelX: -config.chargeMeterWidth / 2 - config.chargeMeterAvoidHudPadding,
+    labelY: -config.chargeMeterHeight / 2
   };
 }
 

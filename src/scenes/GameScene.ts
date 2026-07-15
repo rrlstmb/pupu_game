@@ -944,6 +944,7 @@ export class GameScene extends Phaser.Scene {
     window.__SHIMING_BIDA_DEBUG__.isPlayerInCover = this.isPlayerInCover();
     window.__SHIMING_BIDA_DEBUG__.projectileSystem = this.projectileSystem.snapshot();
     window.__SHIMING_BIDA_DEBUG__.projectileViewPool = this.projectileSystem.viewPoolStats();
+    window.__SHIMING_BIDA_DEBUG__.projectileShadows = this.projectileSystem.shadowSnapshot();
     window.__SHIMING_BIDA_DEBUG__.predictedLanding = this.aimAssist.getPredictedLanding();
     window.__SHIMING_BIDA_DEBUG__.actualLanding = this.projectileSystem.getLastLanding();
     window.__SHIMING_BIDA_DEBUG__.landingError = this.projectileSystem.getActualLandingError();
@@ -1029,6 +1030,7 @@ export class GameScene extends Phaser.Scene {
     delete debug.isPlayerInCover;
     delete debug.projectileSystem;
     delete debug.projectileViewPool;
+    delete debug.projectileShadows;
     delete debug.predictedLanding;
     delete debug.actualLanding;
     delete debug.landingError;

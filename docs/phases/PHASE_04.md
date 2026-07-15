@@ -73,3 +73,9 @@ Landing is defined as crossing a horizontal landing plane after the projectile h
 - No formal hit effects.
 - No final art or audio.
 
+## Targeted Presentation Amendments
+
+- Current Space behavior charges on hold and throws on release; production trajectory helpers remain disabled.
+- ChargeMeter is a right-anchored vertical bar whose fill grows bottom-to-top from the same 1%-100% power used by target Y.
+- Each active projectile view owns a pooled placeholder shadow at its authoritative ground projection. The airborne sprite remains at visual position, and shadow presentation never participates in collision.
+- Evidence: `docs/evidence/PHASE_04_VERTICAL_METER_SHADOW_FIX.md`.
