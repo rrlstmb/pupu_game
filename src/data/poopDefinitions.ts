@@ -51,7 +51,7 @@ export const POOP_DEFINITIONS: readonly PoopDefinition[] = [
     skillFloor: 'high',
     bestAgainst: ['dense lanes', 'multi target timing'],
     weakAgainst: ['isolated target', 'precision score chasing'],
-    capability: { kind: 'splash', splashRadius: 96 }
+    capability: { kind: 'splash', splashRadius: 96, splashMaxTargets: 4 }
   },
   {
     id: 'jumbo_poop',

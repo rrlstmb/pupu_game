@@ -50,6 +50,23 @@ describe('Poop behavior strategies', () => {
     expect(second.events).toHaveLength(0);
   });
 
+  it('uses landing origin, max targets, and excludes immune or exiting NPCs', () => {
+    const splash = POOP_DEFINITIONS.find((definition) => definition.id === 'splash_poop')!;
+    expect(splash.capability).toMatchObject({ splashRadius: 96, splashMaxTargets: 4 });
+    const npcs = [
+      npcAt(1, 500, 'Walking'), npcAt(2, 520, 'Distracted'), npcAt(3, 540, 'Recovering'),
+      npcAt(4, 560, 'Exiting'), npcAt(5, 580, 'Walking'), npcAt(6, 590, 'Walking'), npcAt(7, 595, 'Walking')
+    ];
+    const result = resolveProjectileNPCHits(
+      [projectileAt(1, 'splash_poop', 500, 320)], npcs, NPC_DEFINITIONS, new Set(), POOP_DEFINITIONS
+    );
+    const hitIds = result.events.filter((event) => event.type === 'PROJECTILE_HIT').map((event) => event.npcId);
+    expect(hitIds).toEqual([1, 2, 5, 6]);
+    expect(new Set(hitIds).size).toBe(hitIds.length);
+    expect(hitIds).not.toContain(3);
+    expect(hitIds).not.toContain(4);
+  });
+
   it('jumbo poop marks hits as defense breaking', () => {
     const result = resolveProjectileNPCHits(
       [projectileAt(1, 'jumbo_poop', 500, 320)],

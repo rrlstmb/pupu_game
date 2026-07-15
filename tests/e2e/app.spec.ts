@@ -877,7 +877,8 @@ test('phase 12 runs Level 1 through pause, timeout result, and deterministic cle
   expect(retried).toMatchObject({ attempt: 2, phase: 'countdown', remainingSeconds: 90 });
   expect(retried.definition.seed).toBe(settled.definition.seed);
   expect(retried.metrics).toEqual({
-    totalScore: 0, highestCombo: 0, hitCount: 0, throwCount: 0, npcHitCounts: {}, interactionCounts: {}
+    totalScore: 0, highestCombo: 0, hitCount: 0, throwCount: 0,
+    npcHitCounts: {}, interactionCounts: {}, maxSplashTargetsHit: 0
   });
   expect((await npcSpawner(page)).npcs).toHaveLength(0);
   expect((await projectileSystem(page)).projectiles).toHaveLength(0);
@@ -1021,6 +1022,70 @@ test('phase 14 teaches umbrella blocking and jumbo cracking in rainy Level 3', a
   expect((await levelSession(page)).completionCount).toBe(1);
   await expect.poll(() => hudResultText(page)).toContain('時間到');
   expect(await hudResultText(page)).toContain('用巨無霸破解 3 把雨傘');
+  expect(consoleErrors).toEqual([]);
+});
+
+test('phase 15 rewards a three-person splash during the Level 4 market exit crowd', async ({ page }) => {
+  test.setTimeout(60_000);
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => consoleErrors.push(error.message));
+
+  await page.goto('/');
+  await expect(page.locator('canvas')).toHaveAttribute('data-game-ready', 'true');
+  const canvas = page.locator('canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height * (645 / 720));
+  await expect.poll(() => activeScenes(page)).toContain('GameScene');
+
+  let session = await levelSession(page);
+  expect(session.definition).toMatchObject({
+    id: 'level_04', seed: 'level-04-market-seed', availablePoopTypes: ['normal_poop', 'splash_poop'],
+    visual: { profile: 'market_evening' }
+  });
+  await advanceLevelTime(page, 3);
+  await advanceLevelTime(page, session.remainingSeconds - 20);
+  await expect.poll(async () => (await levelSession(page)).triggeredEventIds).toEqual(['market_exit_crowd']);
+  await expect.poll(async () => (await npcSpawner(page)).npcs.length).toBeGreaterThan(0);
+  const exitCrowd = (await npcSpawner(page)).npcs;
+  expect(exitCrowd.length).toBeLessThanOrEqual(15);
+  expect(exitCrowd.some((npc) => npc.definitionId === 'tourist')).toBe(true);
+
+  await page.keyboard.press('KeyE');
+  await expect.poll(async () => (await poopInventory(page)).selectedPoopType).toBe('splash_poop');
+  const playerX = (await playerState(page)).x;
+  const travelDuration = 0.65 + (1.55 - 0.65) * 0.01;
+  const centerX = playerX + 72 * travelDuration + 72 / 60;
+  const scoreBefore = (await scoreState(page)).totalScore;
+  const alertBefore = (await alertState(page)).value;
+  const rantsBefore = (await gameplayEvents(page)).filter((event) => event.type === 'NPC_RANT_STARTED').length;
+  await page.evaluate(({ center }) => {
+    const debug = window.__SHIMING_BIDA_DEBUG__;
+    debug?.clearNPCSandbox?.(true);
+    for (const offset of [-34, 0, 34]) debug?.spawnNPCSandbox?.('tourist', center + offset, 'front_road');
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true }));
+    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space', key: ' ', bubbles: true }));
+  }, { center: centerX });
+
+  await expect.poll(async () =>
+    (await gameplayEvents(page)).filter((event) => event.type === 'NPC_RANT_STARTED').length - rantsBefore,
+  { timeout: 12_000 }).toBe(3);
+  await expect.poll(async () => (await levelSession(page)).metrics.maxSplashTargetsHit).toBe(3);
+  expect((await scoreState(page)).totalScore).toBeGreaterThan(scoreBefore);
+  expect((await scoreState(page)).comboCount).toBeGreaterThanOrEqual(3);
+  expect((await alertState(page)).value).toBeGreaterThan(alertBefore);
+  expect((await scoreState(page)).breakdowns.slice(-3).every((entry) => entry.ammoType === 'splash_poop')).toBe(true);
+  await page.screenshot({ path: 'docs/evidence/phase-15-level-04-market-splash.png', fullPage: true });
+
+  session = await levelSession(page);
+  await advanceLevelTime(page, session.remainingSeconds);
+  await expect.poll(async () => (await levelSession(page)).phase).toBe('settled');
+  expect((await levelSession(page)).completionCount).toBe(1);
+  await expect.poll(() => hudResultText(page)).toContain('時間到');
+  expect(await hudResultText(page)).toContain('單次飛濺命中 3 人');
   expect(consoleErrors).toEqual([]);
 });
 

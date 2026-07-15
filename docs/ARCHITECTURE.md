@@ -173,6 +173,7 @@ Depth constants live in `src/domain/layout/Depth.ts`.
 - Every effect gets a stable effect instance id derived from projectile, poop type, and impact window.
 - Sticky effects refresh an existing same-poop slow effect on the same NPC instead of stacking unlimited multipliers.
 - Splash effects dedupe by effect instance id so one explosion cannot affect the same NPC twice in the same frame.
+- Splash origin is the projectile's authoritative landing projection. Candidate states, radius, deterministic distance/id order, and maximum targets are resolved in the pure strategy before validated hit events reach score/combo/alert.
 - Jumbo poop marks `breaksDefense` for future defense objects, but Phase 09 does not implement defense objects.
 - Bouncy poop can bounce only on surfaces whose tags match its capability data.
 - Stink poop creates `EnvironmentalEffectZone` domain state with lifetime, radius, slow multiplier, alert pressure, stats, and cleanup hooks for future cleaner systems.

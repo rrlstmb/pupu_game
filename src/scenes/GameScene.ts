@@ -450,6 +450,13 @@ export class GameScene extends Phaser.Scene {
       this.applyGameplayEventsToAlert(hitResult.events);
       this.applyGameplayEventsToScore(hitResult.events);
       this.renderInteractionFeedback(hitResult.events);
+      const splashHitsByProjectile = new Map<number, number>();
+      for (const event of hitResult.events) {
+        if (event.type === GameplayEventTypes.ProjectileHit && event.poopType === 'splash_poop') {
+          splashHitsByProjectile.set(event.projectileId, (splashHitsByProjectile.get(event.projectileId) ?? 0) + 1);
+        }
+      }
+      const maxSplashTargetsHit = Math.max(0, ...splashHitsByProjectile.values());
       this.levelSession = updateLevelMetrics(this.levelSession, {
         hitCount: this.levelSession.metrics.hitCount + hitResult.events.filter(
           (event) => event.type === GameplayEventTypes.ProjectileHit
@@ -463,7 +470,8 @@ export class GameScene extends Phaser.Scene {
           const next = { ...counts };
           for (const tag of event.interactionTags) next[tag] = (next[tag] ?? 0) + 1;
           return next;
-        }, { ...(this.levelSession.metrics.interactionCounts ?? {}) })
+        }, { ...(this.levelSession.metrics.interactionCounts ?? {}) }),
+        maxSplashTargetsHit
       });
       this.projectileSystem.recycleByIds(hitResult.projectileIdsToRecycle);
       this.hitTokens = new Set(removeHitTokensForProjectiles(this.hitTokens, hitResult.projectileIdsToRecycle));

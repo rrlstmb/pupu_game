@@ -15,6 +15,7 @@ export type PoopCapability = {
   readonly slowMultiplier?: number;
   readonly effectDurationSeconds?: number;
   readonly splashRadius?: number;
+  readonly splashMaxTargets?: number;
   readonly breaksDefense?: boolean;
   readonly maxBounces?: number;
   readonly bounceRestitution?: number;

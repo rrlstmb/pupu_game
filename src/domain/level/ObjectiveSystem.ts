@@ -8,6 +8,7 @@ export type LevelMetrics = {
   readonly throwCount: number;
   readonly npcHitCounts?: Readonly<Partial<Record<NPCType, number>>>;
   readonly interactionCounts?: Readonly<Record<string, number>>;
+  readonly maxSplashTargetsHit?: number;
 };
 
 export type ObjectiveState = {

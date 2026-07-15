@@ -39,20 +39,25 @@ export const singleTargetStrategy: PoopBehaviorStrategy = {
 export const splashStrategy: PoopBehaviorStrategy = {
   resolve(context) {
     const radius = context.poopDefinition.capability.splashRadius ?? 0;
+    const maxTargets = context.poopDefinition.capability.splashMaxTargets ?? 0;
     const effectId = `splash:${context.projectile.id}`;
+    const origin = context.projectile.landedAt ?? context.projectile.position;
+    const candidates = context.npcs
+      .filter((npc) => npc.state === 'Walking' || npc.state === 'Distracted')
+      .map((npc) => ({ npc, distance: Math.hypot(npc.x - origin.x, npc.y - origin.y) }))
+      .filter(({ distance }) => distance <= radius)
+      .sort((left, right) => left.distance - right.distance || left.npc.id - right.npc.id)
+      .slice(0, maxTargets);
     const npcIds: number[] = [];
     const tokens: string[] = [];
 
-    for (const npc of context.npcs) {
+    for (const { npc } of candidates) {
       const token = `${effectId}:${npc.id}:${npc.hitWindowId}`;
       if (context.existingTokens.has(token)) {
         continue;
       }
-      const distance = Math.hypot(npc.x - context.primaryNpc.x, npc.y - context.primaryNpc.y);
-      if (distance <= radius) {
-        npcIds.push(npc.id);
-        tokens.push(token);
-      }
+      npcIds.push(npc.id);
+      tokens.push(token);
     }
 
     return { npcIds, tokens };

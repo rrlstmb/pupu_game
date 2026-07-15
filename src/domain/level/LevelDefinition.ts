@@ -12,7 +12,7 @@ export type LevelSpawnDefinition = {
 };
 
 export type LevelVisualDefinition = {
-  readonly profile: 'day' | 'evening' | 'rainy';
+  readonly profile: 'day' | 'evening' | 'rainy' | 'market_evening';
   readonly skylineColor: number;
   readonly alleyColor: number;
   readonly rooftopColor: number;
@@ -36,7 +36,8 @@ export type LevelStarCondition =
   | { readonly id: 'combo_target'; readonly label: string; readonly targetCombo: number }
   | { readonly id: 'accuracy_target'; readonly label: string; readonly minimumExclusive: number }
   | { readonly id: 'npc_hit_target'; readonly label: string; readonly npcTypes: readonly NPCType[]; readonly targetHits: number }
-  | { readonly id: 'interaction_target'; readonly label: string; readonly interactionTag: string; readonly targetCount: number };
+  | { readonly id: 'interaction_target'; readonly label: string; readonly interactionTag: string; readonly targetCount: number }
+  | { readonly id: 'splash_multi_hit_target'; readonly label: string; readonly targetCount: number };
 
 export type LevelDefinition = {
   readonly id: string;
@@ -139,7 +140,9 @@ function validateStars(input: unknown, errors: string[]): void {
     return;
   }
   const ids = input.filter(isRecord).map((condition) => condition.id);
-  const allowedIds: readonly LevelStarCondition['id'][] = ['score_target', 'combo_target', 'accuracy_target', 'npc_hit_target', 'interaction_target'];
+  const allowedIds: readonly LevelStarCondition['id'][] = [
+    'score_target', 'combo_target', 'accuracy_target', 'npc_hit_target', 'interaction_target', 'splash_multi_hit_target'
+  ];
   if (new Set(ids).size !== 3 || !ids.includes('score_target') || ids.some((id) => !allowedIds.includes(id as LevelStarCondition['id']))) {
     errors.push('stars must define three unique conditions including score_target');
   }
@@ -163,13 +166,15 @@ function validateStars(input: unknown, errors: string[]): void {
     } else if (condition.id === 'interaction_target' &&
       (typeof condition.interactionTag !== 'string' || condition.interactionTag.trim() === '' || !isPositiveInteger(condition.targetCount))) {
       errors.push('interaction_target requires a tag and positive targetCount');
+    } else if (condition.id === 'splash_multi_hit_target' && !isPositiveInteger(condition.targetCount)) {
+      errors.push('splash_multi_hit_target.targetCount must be a positive integer');
     }
   }
 }
 
 function validateVisual(input: unknown, errors: string[]): void {
-  if (!isRecord(input) || (input.profile !== 'day' && input.profile !== 'evening' && input.profile !== 'rainy')) {
-    errors.push('visual must define a day, evening, or rainy profile');
+  if (!isRecord(input) || !['day', 'evening', 'rainy', 'market_evening'].includes(String(input.profile))) {
+    errors.push('visual must define a supported profile');
     return;
   }
   for (const key of ['skylineColor', 'alleyColor', 'rooftopColor']) {
