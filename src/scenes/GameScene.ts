@@ -449,6 +449,7 @@ export class GameScene extends Phaser.Scene {
       this.gameplayEvents.push(...hitResult.events);
       this.applyGameplayEventsToAlert(hitResult.events);
       this.applyGameplayEventsToScore(hitResult.events);
+      this.renderInteractionFeedback(hitResult.events);
       this.levelSession = updateLevelMetrics(this.levelSession, {
         hitCount: this.levelSession.metrics.hitCount + hitResult.events.filter(
           (event) => event.type === GameplayEventTypes.ProjectileHit
@@ -456,7 +457,13 @@ export class GameScene extends Phaser.Scene {
         npcHitCounts: hitResult.events.reduce((counts, event) => {
           if (event.type !== GameplayEventTypes.ProjectileHit) return counts;
           return { ...counts, [event.npcType]: (counts[event.npcType] ?? 0) + 1 };
-        }, { ...(this.levelSession.metrics.npcHitCounts ?? {}) })
+        }, { ...(this.levelSession.metrics.npcHitCounts ?? {}) }),
+        interactionCounts: hitResult.events.reduce((counts, event) => {
+          if (event.type !== GameplayEventTypes.ProjectileHit) return counts;
+          const next = { ...counts };
+          for (const tag of event.interactionTags) next[tag] = (next[tag] ?? 0) + 1;
+          return next;
+        }, { ...(this.levelSession.metrics.interactionCounts ?? {}) })
       });
       this.projectileSystem.recycleByIds(hitResult.projectileIdsToRecycle);
       this.hitTokens = new Set(removeHitTokensForProjectiles(this.hitTokens, hitResult.projectileIdsToRecycle));
@@ -535,7 +542,22 @@ export class GameScene extends Phaser.Scene {
           ALERT_RULES,
           poopDefinitionById(event.poopType).alertCost + event.interactionAlertDelta
         );
+      } else if (event.type === GameplayEventTypes.ProjectileBlocked) {
+        this.alertState = applyAlertDelta(this.alertState, event.interactionAlertDelta, 'npc_danger', ALERT_RULES);
       }
+    }
+  }
+
+  private renderInteractionFeedback(events: readonly GameplayEvent[]): void {
+    for (const event of events) {
+      if (event.type !== GameplayEventTypes.ProjectileBlocked) continue;
+      const npc = this.npcSpawnerState.npcs.find((candidate) => candidate.id === event.npcId);
+      if (!npc) continue;
+      const label = this.add.text(npc.x, npc.y - 58 * npc.scale, event.feedbackLabel, {
+        fontFamily: 'sans-serif', fontSize: '18px', color: '#fef3c7', backgroundColor: '#7c2d12',
+        padding: { x: 8, y: 4 }
+      }).setOrigin(0.5).setDepth(Depths.particles);
+      this.time.delayedCall(900, () => label.destroy());
     }
   }
 
@@ -666,7 +688,20 @@ export class GameScene extends Phaser.Scene {
     this.renderParallax(layout.parallaxLayers);
     this.renderLanes(layout.lanes);
     this.renderRooftop(layout);
+    this.renderWeather(layout);
     this.renderDebugOverlay(layout);
+  }
+
+  private renderWeather(layout: WorldLayout): void {
+    const weather = this.levelDefinition.visual.weather;
+    if (weather.kind !== 'rain') return;
+    for (let index = 0; index < weather.streakCount; index += 1) {
+      const x = ((index * 97) % layout.width) + 18;
+      const y = ((index * 53) % layout.height) + 12;
+      this.add.line(0, 0, x, y, x - 9, y + 28, weather.streakColor, weather.streakAlpha)
+        .setOrigin(0, 0)
+        .setDepth(Depths.particles - 2);
+    }
   }
 
   private renderZoneBands(layout: WorldLayout): void {

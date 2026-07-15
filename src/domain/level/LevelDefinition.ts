@@ -12,10 +12,16 @@ export type LevelSpawnDefinition = {
 };
 
 export type LevelVisualDefinition = {
-  readonly profile: 'day' | 'evening';
+  readonly profile: 'day' | 'evening' | 'rainy';
   readonly skylineColor: number;
   readonly alleyColor: number;
   readonly rooftopColor: number;
+  readonly weather: {
+    readonly kind: 'clear' | 'rain';
+    readonly streakColor: number;
+    readonly streakAlpha: number;
+    readonly streakCount: number;
+  };
 };
 
 export type LevelTimedEvent = {
@@ -29,7 +35,8 @@ export type LevelStarCondition =
   | { readonly id: 'score_target'; readonly label: string; readonly targetScore: number }
   | { readonly id: 'combo_target'; readonly label: string; readonly targetCombo: number }
   | { readonly id: 'accuracy_target'; readonly label: string; readonly minimumExclusive: number }
-  | { readonly id: 'npc_hit_target'; readonly label: string; readonly npcTypes: readonly NPCType[]; readonly targetHits: number };
+  | { readonly id: 'npc_hit_target'; readonly label: string; readonly npcTypes: readonly NPCType[]; readonly targetHits: number }
+  | { readonly id: 'interaction_target'; readonly label: string; readonly interactionTag: string; readonly targetCount: number };
 
 export type LevelDefinition = {
   readonly id: string;
@@ -132,7 +139,7 @@ function validateStars(input: unknown, errors: string[]): void {
     return;
   }
   const ids = input.filter(isRecord).map((condition) => condition.id);
-  const allowedIds: readonly LevelStarCondition['id'][] = ['score_target', 'combo_target', 'accuracy_target', 'npc_hit_target'];
+  const allowedIds: readonly LevelStarCondition['id'][] = ['score_target', 'combo_target', 'accuracy_target', 'npc_hit_target', 'interaction_target'];
   if (new Set(ids).size !== 3 || !ids.includes('score_target') || ids.some((id) => !allowedIds.includes(id as LevelStarCondition['id']))) {
     errors.push('stars must define three unique conditions including score_target');
   }
@@ -153,19 +160,27 @@ function validateStars(input: unknown, errors: string[]): void {
         condition.npcTypes.some((type) => !NPC_TYPES.includes(type as NPCType)) ||
         !isPositiveInteger(condition.targetHits))) {
       errors.push('npc_hit_target requires known npcTypes and a positive targetHits');
+    } else if (condition.id === 'interaction_target' &&
+      (typeof condition.interactionTag !== 'string' || condition.interactionTag.trim() === '' || !isPositiveInteger(condition.targetCount))) {
+      errors.push('interaction_target requires a tag and positive targetCount');
     }
   }
 }
 
 function validateVisual(input: unknown, errors: string[]): void {
-  if (!isRecord(input) || (input.profile !== 'day' && input.profile !== 'evening')) {
-    errors.push('visual must define a day or evening profile');
+  if (!isRecord(input) || (input.profile !== 'day' && input.profile !== 'evening' && input.profile !== 'rainy')) {
+    errors.push('visual must define a day, evening, or rainy profile');
     return;
   }
   for (const key of ['skylineColor', 'alleyColor', 'rooftopColor']) {
     if (typeof input[key] !== 'number' || !Number.isInteger(input[key]) || input[key] < 0 || input[key] > 0xffffff) {
       errors.push(`visual.${key} must be a valid RGB color`);
     }
+  }
+  if (!isRecord(input.weather) || (input.weather.kind !== 'clear' && input.weather.kind !== 'rain') ||
+    typeof input.weather.streakColor !== 'number' || typeof input.weather.streakAlpha !== 'number' ||
+    input.weather.streakAlpha < 0 || input.weather.streakAlpha > 1 || !isPositiveInteger(input.weather.streakCount)) {
+    errors.push('visual.weather must define kind, color, alpha, and positive streakCount');
   }
 }
 

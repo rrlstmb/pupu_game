@@ -51,6 +51,7 @@ export type NPCPendingRant = {
   readonly poopType: PoopType;
   readonly impactDistance: number;
   readonly interactionScoreDelta: number;
+  readonly interactionTags: readonly string[];
 };
 
 export type NPCDefinition = {

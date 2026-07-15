@@ -5,6 +5,7 @@ import { type PoopInventoryState, createPoopInventory, selectedSlot } from '../d
 import { type ScoreState, createScoreState } from '../domain/score/ScoreCalculator';
 import type { LevelSession } from '../domain/level/LevelDirector';
 import { LEVEL_02 } from '../data/levels/level02';
+import { LEVEL_03 } from '../data/levels/level03';
 import { eventBus } from '../runtime/EventBus';
 import { GAME_CONFIG } from '../runtime/GameConfig';
 import { GameEvents } from '../runtime/GameEvents';
@@ -252,7 +253,10 @@ export class HUDScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     retry.setData('role', 'retry-level');
-    const hasNextLevel = session.definition.id === 'level_01';
+    const nextLevel = session.definition.id === 'level_01'
+      ? LEVEL_02
+      : session.definition.id === 'level_02' ? LEVEL_03 : undefined;
+    const hasNextLevel = nextLevel !== undefined;
     const next = this.add
       .text(GAME_CONFIG.width / 2 + 110, 590, '下一關', {
         fontFamily: 'sans-serif', fontSize: '24px', color: hasNextLevel ? '#111827' : '#9ca3af',
@@ -270,7 +274,7 @@ export class HUDScene extends Phaser.Scene {
     });
     next.on(Phaser.Input.Events.POINTER_UP, () => {
       if (hasNextLevel) {
-        this.scene.get(SceneKeys.Game).scene.restart({ levelDefinition: LEVEL_02 });
+        this.scene.get(SceneKeys.Game).scene.restart({ levelDefinition: nextLevel });
       } else {
         nextStatus.setVisible(true);
       }

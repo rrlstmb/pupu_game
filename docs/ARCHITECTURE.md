@@ -96,6 +96,7 @@ Unit tests target pure domain first. Integration tests validate adapter/event fl
 ## Level Runtime
 
 - `LevelDefinition` is immutable JSON-compatible data loaded through runtime validation. Invalid definitions throw one diagnostic error before a session starts.
+- Level visual data includes a validated weather profile. Phaser maps rain streak parameters to placeholder presentation; weather visuals never affect deterministic gameplay state.
 - `LevelDirector` is a pure reducer for countdown, running, paused, and settled phases. It owns the level clock, objective completion latch, attempt/session id, metrics, outcome, and immutable result snapshot.
 - `ObjectiveSystem` evaluates the target score. `StarEvaluation` separately evaluates score, highest combo, and strict accuracy conditions; stars do not decide basic level success.
 - Every gameplay event carries the active LevelSession id. GameScene ignores scoring events from another session, and restart clears event/token collections before creating the next attempt.
@@ -203,6 +204,7 @@ Depth constants live in `src/domain/layout/Depth.ts`.
 - Dangerous NPC behavior stores `dangerPhase`, `dangerKind`, and timer fields; behavior must pass through telegraph, active, and recovery phases.
 - NPC x poop interactions live in a data matrix with safe default behavior for missing pairs.
 - Umbrella blocking, interaction alert deltas, and interaction score deltas are resolved in domain hit logic.
+- Blocked defense interactions emit `PROJECTILE_BLOCKED`; they may raise alert and show feedback but never increment valid hits or create rant score. Legal interaction tags are counted by LevelSession for data-driven star objectives.
 - Cleaner systems clear environmental effect zones through the shared zone cleanup interface.
 - Debug NPC sandbox is development-only and exposes deterministic spawn/clear commands for acceptance.
 

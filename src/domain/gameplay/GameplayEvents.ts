@@ -3,6 +3,7 @@ import type { PoopType } from '../poop/PoopModel';
 
 export const GameplayEventTypes = {
   ProjectileHit: 'PROJECTILE_HIT',
+  ProjectileBlocked: 'PROJECTILE_BLOCKED',
   NPCRantStarted: 'NPC_RANT_STARTED',
   NPCRecovered: 'NPC_RECOVERED'
 } as const;
@@ -21,6 +22,19 @@ export type GameplayEvent =
       readonly impactDistance: number;
       readonly interactionAlertDelta: number;
       readonly interactionScoreDelta: number;
+      readonly interactionTags: readonly string[];
+    }
+  | {
+      readonly sessionId: string;
+      readonly type: typeof GameplayEventTypes.ProjectileBlocked;
+      readonly token: string;
+      readonly projectileId: number;
+      readonly poopType: PoopType;
+      readonly npcId: number;
+      readonly npcType: NPCType;
+      readonly feedbackLabel: string;
+      readonly interactionAlertDelta: number;
+      readonly interactionTags: readonly string[];
     }
   | {
       readonly sessionId: string;
@@ -33,6 +47,7 @@ export type GameplayEvent =
       readonly reactionLevel: number;
       readonly impactDistance: number;
       readonly interactionScoreDelta: number;
+      readonly interactionTags: readonly string[];
     }
   | {
       readonly sessionId: string;
@@ -66,7 +81,8 @@ export function collectNPCStateTransitionEvents(
         validHitCount: next.validHitCount,
         reactionLevel: next.reactionLevel,
         impactDistance: previous.pendingRant.impactDistance,
-        interactionScoreDelta: previous.pendingRant.interactionScoreDelta
+        interactionScoreDelta: previous.pendingRant.interactionScoreDelta,
+        interactionTags: previous.pendingRant.interactionTags
       });
     }
 

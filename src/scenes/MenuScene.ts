@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { LEVEL_01 } from '../data/levels/level01';
 import { LEVEL_02 } from '../data/levels/level02';
+import { LEVEL_03 } from '../data/levels/level03';
 import type { LevelDefinition } from '../domain/level/LevelDefinition';
 import { eventBus } from '../runtime/EventBus';
 import { GameEvents } from '../runtime/GameEvents';
@@ -34,6 +35,7 @@ export class MenuScene extends Phaser.Scene {
 
     const startButton = this.createLevelButton(GAME_CONFIG.width / 2, 390, '第 1 關：準時上班', LEVEL_01, 'start-game');
     const levelTwoButton = this.createLevelButton(GAME_CONFIG.width / 2, 475, '第 2 關：下班尖峰', LEVEL_02, 'start-level-02');
+    const levelThreeButton = this.createLevelButton(GAME_CONFIG.width / 2, 560, '第 3 關：雨傘防線', LEVEL_03, 'start-level-03');
 
     this.add
       .text(GAME_CONFIG.width / 2, 650, '選擇關卡', {
@@ -46,10 +48,12 @@ export class MenuScene extends Phaser.Scene {
     registerSceneDisposer(this, () => {
       startButton.removeAllListeners();
       levelTwoButton.removeAllListeners();
+      levelThreeButton.removeAllListeners();
       title.destroy();
       subtitle.destroy();
       startButton.destroy();
       levelTwoButton.destroy();
+      levelThreeButton.destroy();
       emitSceneShutdown(this);
     });
   }

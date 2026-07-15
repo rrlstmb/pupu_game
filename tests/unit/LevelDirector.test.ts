@@ -74,7 +74,9 @@ describe('LevelDirector', () => {
     const reset = resetLevelSession(played);
     expect(reset.definition.seed).toBe(played.definition.seed);
     expect(reset.id).toBe('level_01:level-01-seed:attempt-2');
-    expect(reset.metrics).toEqual({ totalScore: 0, highestCombo: 0, hitCount: 0, throwCount: 0, npcHitCounts: {} });
+    expect(reset.metrics).toEqual({
+      totalScore: 0, highestCombo: 0, hitCount: 0, throwCount: 0, npcHitCounts: {}, interactionCounts: {}
+    });
     expect(reset.result).toBeUndefined();
     expect(reset.remainingSeconds).toBe(90);
   });

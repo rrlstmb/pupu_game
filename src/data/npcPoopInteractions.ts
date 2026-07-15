@@ -3,7 +3,7 @@ import type { PoopType } from '../domain/poop/PoopModel';
 import type { NPCPoopInteraction } from '../domain/npc/NPCInteractionMatrix';
 
 export const NPC_POOP_INTERACTIONS: readonly NPCPoopInteraction[] = [
-  { npcType: 'umbrella_pedestrian', poopType: 'normal_poop', outcome: 'blocked', alertDelta: 4, scoreDelta: 0, tags: ['umbrella_blocks'] },
+  { npcType: 'umbrella_pedestrian', poopType: 'normal_poop', outcome: 'blocked', alertDelta: 4, scoreDelta: 0, tags: ['umbrella_blocks'], feedbackLabel: '雨傘擋住！' },
   { npcType: 'umbrella_pedestrian', poopType: 'jumbo_poop', outcome: 'effective', alertDelta: 3, scoreDelta: 40, tags: ['umbrella_crack'] },
   { npcType: 'umbrella_pedestrian', poopType: 'bouncy_poop', outcome: 'effective', alertDelta: 2, scoreDelta: 30, tags: ['umbrella_angle_crack'] },
   { npcType: 'delivery_rider', poopType: 'sticky_poop', outcome: 'effective', alertDelta: 1, scoreDelta: 40, tags: ['speed_control'] },

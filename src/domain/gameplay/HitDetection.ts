@@ -47,6 +47,20 @@ export function resolveProjectileNPCHits(
       if (!poopDefinition) continue;
       const interaction = interactionFor(NPC_POOP_INTERACTIONS, npc.definitionId, projectile.poopType, SAFE_DEFAULT_INTERACTION);
       if (isBlockedByInteraction(interaction, projectile.bounceCount)) {
+        const token = `blocked:${projectile.id}:${npc.id}:${npc.hitWindowId}`;
+        nextTokens.add(token);
+        events.push({
+          sessionId,
+          type: GameplayEventTypes.ProjectileBlocked,
+          token,
+          projectileId: projectile.id,
+          poopType: projectile.poopType,
+          npcId: npc.id,
+          npcType: npc.definitionId,
+          feedbackLabel: interaction.feedbackLabel ?? '擋住！',
+          interactionAlertDelta: interaction.alertDelta,
+          interactionTags: interaction.tags
+        });
         projectileIdsToRecycle.add(projectile.id);
         break;
       }
@@ -91,7 +105,8 @@ export function resolveProjectileNPCHits(
                   eventId: token,
                   poopType: projectile.poopType,
                   impactDistance,
-                  interactionScoreDelta: interaction.scoreDelta
+                  interactionScoreDelta: interaction.scoreDelta,
+                  interactionTags: interaction.tags
                 },
                 activeEffects: stickyEffect
                   ? [...candidate.activeEffects.filter((effect) => effect.poopType !== stickyEffect.poopType), stickyEffect]
@@ -111,7 +126,8 @@ export function resolveProjectileNPCHits(
           validHitCount,
           impactDistance,
           interactionAlertDelta: interaction.alertDelta,
-          interactionScoreDelta: interaction.scoreDelta
+          interactionScoreDelta: interaction.scoreDelta,
+          interactionTags: interaction.tags
         });
       }
       break;

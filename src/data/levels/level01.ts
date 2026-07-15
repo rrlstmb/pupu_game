@@ -9,7 +9,10 @@ export const LEVEL_01 = loadLevelDefinition({
   seed: 'level-01-seed',
   availablePoopTypes: ['normal_poop'],
   aimAssist: 'disabled',
-  visual: { profile: 'day', skylineColor: 0x172033, alleyColor: 0x293241, rooftopColor: 0x3d2f27 },
+  visual: {
+    profile: 'day', skylineColor: 0x172033, alleyColor: 0x293241, rooftopColor: 0x3d2f27,
+    weather: { kind: 'clear', streakColor: 0xbde0fe, streakAlpha: 0, streakCount: 1 }
+  },
   spawn: {
     intervalSeconds: 1.15,
     spawnXPadding: 72,

@@ -876,7 +876,9 @@ test('phase 12 runs Level 1 through pause, timeout result, and deterministic cle
   const retried = await levelSession(page);
   expect(retried).toMatchObject({ attempt: 2, phase: 'countdown', remainingSeconds: 90 });
   expect(retried.definition.seed).toBe(settled.definition.seed);
-  expect(retried.metrics).toEqual({ totalScore: 0, highestCombo: 0, hitCount: 0, throwCount: 0, npcHitCounts: {} });
+  expect(retried.metrics).toEqual({
+    totalScore: 0, highestCombo: 0, hitCount: 0, throwCount: 0, npcHitCounts: {}, interactionCounts: {}
+  });
   expect((await npcSpawner(page)).npcs).toHaveLength(0);
   expect((await projectileSystem(page)).projectiles).toHaveLength(0);
   expect((await scoreState(page)).comboCount).toBe(0);
@@ -954,6 +956,71 @@ test('phase 13 plays Level 2 with sticky poop and triggers the final rush once',
   await expect.poll(async () => (await levelSession(page)).phase).toBe('settled');
   expect((await levelSession(page)).completionCount).toBe(1);
   await expect.poll(() => hudResultText(page)).toContain('時間到');
+  expect(consoleErrors).toEqual([]);
+});
+
+test('phase 14 teaches umbrella blocking and jumbo cracking in rainy Level 3', async ({ page }) => {
+  test.setTimeout(60_000);
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => consoleErrors.push(error.message));
+
+  await page.goto('/');
+  await expect(page.locator('canvas')).toHaveAttribute('data-game-ready', 'true');
+  const canvas = page.locator('canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height * (560 / 720));
+  await expect.poll(() => activeScenes(page)).toContain('GameScene');
+
+  let session = await levelSession(page);
+  expect(session.definition).toMatchObject({
+    id: 'level_03', seed: 'level-03-umbrella-seed', availablePoopTypes: ['normal_poop', 'jumbo_poop'],
+    visual: { profile: 'rainy', weather: { kind: 'rain' } }
+  });
+  await advanceLevelTime(page, 3);
+
+  await advanceLevelTime(page, session.remainingSeconds - 25);
+  await expect.poll(async () => (await levelSession(page)).triggeredEventIds)
+    .toEqual(['matching_company_umbrella_group']);
+  await expect.poll(async () => (await npcSpawner(page)).npcs.length).toBeGreaterThan(0);
+  const companyGroup = (await npcSpawner(page)).npcs;
+  expect(companyGroup.length).toBeLessThanOrEqual(14);
+  expect(companyGroup.every((npc) => npc.definitionId === 'umbrella_pedestrian')).toBe(true);
+
+  const scoreBeforeBlock = (await scoreState(page)).totalScore;
+  const blockedBefore = (await gameplayEvents(page)).filter((event) => event.type === 'PROJECTILE_BLOCKED').length;
+  await instantMinimumThrowAtSpawnedOffset(page, 'umbrella_pedestrian', 105, 0);
+  await expect.poll(async () =>
+    (await gameplayEvents(page)).filter((event) => event.type === 'PROJECTILE_BLOCKED').length
+  ).toBe(blockedBefore + 1);
+  expect((await gameplayEvents(page)).filter((event) => event.type === 'PROJECTILE_BLOCKED').at(-1)?.feedbackLabel)
+    .toBe('雨傘擋住！');
+  await page.waitForTimeout(100);
+  await page.screenshot({ path: 'docs/evidence/phase-14-umbrella-block.png', fullPage: true });
+  expect((await scoreState(page)).totalScore).toBe(scoreBeforeBlock);
+  expect((await levelSession(page)).metrics.hitCount).toBe(0);
+
+  await page.keyboard.press('KeyE');
+  await expect.poll(async () => (await poopInventory(page)).selectedPoopType).toBe('jumbo_poop');
+  await page.waitForTimeout(850);
+  const rantsBefore = (await gameplayEvents(page)).filter((event) => event.type === 'NPC_RANT_STARTED').length;
+  await instantMinimumThrowAtSpawnedOffset(page, 'umbrella_pedestrian', 105, 0);
+  const umbrellaId = await waitForNewRantEvent(page, rantsBefore, 12_000);
+  expect(umbrellaId).not.toBeNull();
+  await expect.poll(async () => (await scoreState(page)).totalScore).toBeGreaterThan(scoreBeforeBlock);
+  expect((await scoreState(page)).breakdowns.at(-1)?.ammoType).toBe('jumbo_poop');
+  expect((await levelSession(page)).metrics.interactionCounts?.umbrella_crack).toBe(1);
+  await page.screenshot({ path: 'docs/evidence/phase-14-level-03-umbrella.png', fullPage: true });
+
+  session = await levelSession(page);
+  await advanceLevelTime(page, session.remainingSeconds);
+  await expect.poll(async () => (await levelSession(page)).phase).toBe('settled');
+  expect((await levelSession(page)).completionCount).toBe(1);
+  await expect.poll(() => hudResultText(page)).toContain('時間到');
+  expect(await hudResultText(page)).toContain('用巨無霸破解 3 把雨傘');
   expect(consoleErrors).toEqual([]);
 });
 
@@ -1375,7 +1442,7 @@ async function npcById(page: Page, npcId: number): Promise<NPCDebugState | null>
   return (await npcSpawner(page)).npcs.find((npc) => npc.id === npcId) ?? null;
 }
 
-async function gameplayEvents(page: Page): Promise<Array<{ type: string; npcId?: number; npcType?: string }>> {
+async function gameplayEvents(page: Page): Promise<Array<{ type: string; npcId?: number; npcType?: string; feedbackLabel?: string }>> {
   return page.evaluate(() => [...(window.__SHIMING_BIDA_DEBUG__?.gameplayEvents ?? [])]);
 }
 
@@ -1592,10 +1659,10 @@ async function waitForNewRantEvent(
   while (Date.now() < deadline) {
     const events = (await gameplayEvents(page)).filter((event) => event.type === 'NPC_RANT_STARTED');
     const candidates = events.slice(seenRantEvents);
-    const allowedTypes = stableLegacyOnly
-      ? new Set(['office_worker', 'phone_user'])
-      : new Set(['office_worker', 'phone_user', 'jogger']);
-    const event = candidates.find((candidate) => candidate.npcType !== undefined && allowedTypes.has(candidate.npcType));
+    const allowedTypes = new Set(['office_worker', 'phone_user']);
+    const event = candidates.find((candidate) =>
+      candidate.npcType !== undefined && (!stableLegacyOnly || allowedTypes.has(candidate.npcType))
+    );
     if (event?.npcId !== undefined) {
       return event.npcId;
     }

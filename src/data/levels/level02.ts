@@ -9,7 +9,10 @@ export const LEVEL_02 = loadLevelDefinition({
   seed: 'level-02-rush-seed',
   availablePoopTypes: ['normal_poop', 'sticky_poop'],
   aimAssist: 'disabled',
-  visual: { profile: 'evening', skylineColor: 0x392f48, alleyColor: 0x4b4657, rooftopColor: 0x493a38 },
+  visual: {
+    profile: 'evening', skylineColor: 0x392f48, alleyColor: 0x4b4657, rooftopColor: 0x493a38,
+    weather: { kind: 'clear', streakColor: 0xbde0fe, streakAlpha: 0, streakCount: 1 }
+  },
   spawn: {
     intervalSeconds: 1.05,
     spawnXPadding: 72,

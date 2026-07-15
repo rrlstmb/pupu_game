@@ -10,6 +10,7 @@ export type NPCPoopInteraction = {
   readonly alertDelta: number;
   readonly scoreDelta: number;
   readonly tags: readonly string[];
+  readonly feedbackLabel?: string;
 };
 
 export type InteractionMatrixValidation = {

@@ -32,7 +32,10 @@ describe('NPC interaction matrix and advanced roster', () => {
     const umbrella = npcAt('umbrella_pedestrian');
     const normal = projectileAt('normal_poop', 0);
     const blocked = resolveProjectileNPCHits([normal], [umbrella], NPC_DEFINITIONS, new Set(), POOP_DEFINITIONS);
-    expect(blocked.events).toHaveLength(0);
+    expect(blocked.events).toEqual([expect.objectContaining({
+      type: 'PROJECTILE_BLOCKED', feedbackLabel: '雨傘擋住！', npcType: 'umbrella_pedestrian'
+    })]);
+    expect(blocked.npcs[0]).toMatchObject({ state: 'Walking', validHitCount: 0 });
     expect(blocked.projectileIdsToRecycle).toEqual([1]);
 
     const jumbo = resolveProjectileNPCHits(
@@ -43,6 +46,7 @@ describe('NPC interaction matrix and advanced roster', () => {
       POOP_DEFINITIONS
     );
     expect(jumbo.events.map((event) => event.type)).toEqual(['PROJECTILE_HIT']);
+    expect(jumbo.events[0]).toMatchObject({ interactionTags: ['umbrella_crack'] });
     expect(jumbo.npcs[0]).toMatchObject({ state: 'Hit', pendingRant: { poopType: 'jumbo_poop' } });
 
     const bouncy = resolveProjectileNPCHits(
