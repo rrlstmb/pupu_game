@@ -1,10 +1,12 @@
 import type { LevelDefinition } from './LevelDefinition';
+import type { NPCType } from '../npc/NPCModel';
 
 export type LevelMetrics = {
   readonly totalScore: number;
   readonly highestCombo: number;
   readonly hitCount: number;
   readonly throwCount: number;
+  readonly npcHitCounts?: Readonly<Partial<Record<NPCType, number>>>;
 };
 
 export type ObjectiveState = {

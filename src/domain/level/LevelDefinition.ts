@@ -11,10 +11,25 @@ export type LevelSpawnDefinition = {
   readonly lanes: readonly { readonly laneId: LaneId; readonly weight: number }[];
 };
 
+export type LevelVisualDefinition = {
+  readonly profile: 'day' | 'evening';
+  readonly skylineColor: number;
+  readonly alleyColor: number;
+  readonly rooftopColor: number;
+};
+
+export type LevelTimedEvent = {
+  readonly id: string;
+  readonly triggerAtRemainingSeconds: number;
+  readonly once: true;
+  readonly spawn: LevelSpawnDefinition;
+};
+
 export type LevelStarCondition =
   | { readonly id: 'score_target'; readonly label: string; readonly targetScore: number }
   | { readonly id: 'combo_target'; readonly label: string; readonly targetCombo: number }
-  | { readonly id: 'accuracy_target'; readonly label: string; readonly minimumExclusive: number };
+  | { readonly id: 'accuracy_target'; readonly label: string; readonly minimumExclusive: number }
+  | { readonly id: 'npc_hit_target'; readonly label: string; readonly npcTypes: readonly NPCType[]; readonly targetHits: number };
 
 export type LevelDefinition = {
   readonly id: string;
@@ -25,7 +40,9 @@ export type LevelDefinition = {
   readonly seed: string;
   readonly availablePoopTypes: readonly PoopType[];
   readonly aimAssist: 'always' | 'hold' | 'disabled';
+  readonly visual: LevelVisualDefinition;
   readonly spawn: LevelSpawnDefinition;
+  readonly events: readonly LevelTimedEvent[];
   readonly stars: readonly LevelStarCondition[];
 };
 
@@ -65,6 +82,8 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
   }
 
   validateSpawn(input.spawn, errors);
+  validateVisual(input.visual, errors);
+  validateEvents(input.events, input.durationSeconds, errors);
   validateStars(input.stars, errors);
   validateScoreTargetConsistency(input, errors);
   return errors.length > 0
@@ -113,8 +132,9 @@ function validateStars(input: unknown, errors: string[]): void {
     return;
   }
   const ids = input.filter(isRecord).map((condition) => condition.id);
-  if (new Set(ids).size !== 3 || !ids.includes('score_target') || !ids.includes('combo_target') || !ids.includes('accuracy_target')) {
-    errors.push('stars must define score_target, combo_target, and accuracy_target once each');
+  const allowedIds: readonly LevelStarCondition['id'][] = ['score_target', 'combo_target', 'accuracy_target', 'npc_hit_target'];
+  if (new Set(ids).size !== 3 || !ids.includes('score_target') || ids.some((id) => !allowedIds.includes(id as LevelStarCondition['id']))) {
+    errors.push('stars must define three unique conditions including score_target');
   }
   for (const condition of input) {
     if (!isRecord(condition) || typeof condition.label !== 'string' || condition.label.trim() === '') {
@@ -128,7 +148,44 @@ function validateStars(input: unknown, errors: string[]): void {
     } else if (condition.id === 'accuracy_target' &&
       (typeof condition.minimumExclusive !== 'number' || condition.minimumExclusive < 0 || condition.minimumExclusive >= 1)) {
       errors.push('accuracy_target.minimumExclusive must be >= 0 and < 1');
+    } else if (condition.id === 'npc_hit_target' &&
+      (!Array.isArray(condition.npcTypes) || condition.npcTypes.length === 0 ||
+        condition.npcTypes.some((type) => !NPC_TYPES.includes(type as NPCType)) ||
+        !isPositiveInteger(condition.targetHits))) {
+      errors.push('npc_hit_target requires known npcTypes and a positive targetHits');
     }
+  }
+}
+
+function validateVisual(input: unknown, errors: string[]): void {
+  if (!isRecord(input) || (input.profile !== 'day' && input.profile !== 'evening')) {
+    errors.push('visual must define a day or evening profile');
+    return;
+  }
+  for (const key of ['skylineColor', 'alleyColor', 'rooftopColor']) {
+    if (typeof input[key] !== 'number' || !Number.isInteger(input[key]) || input[key] < 0 || input[key] > 0xffffff) {
+      errors.push(`visual.${key} must be a valid RGB color`);
+    }
+  }
+}
+
+function validateEvents(input: unknown, duration: unknown, errors: string[]): void {
+  if (!Array.isArray(input)) {
+    errors.push('events must be an array');
+    return;
+  }
+  const ids = new Set<string>();
+  for (const event of input) {
+    if (!isRecord(event) || typeof event.id !== 'string' || event.id.trim() === '' || ids.has(event.id)) {
+      errors.push('events must have unique non-empty ids');
+      continue;
+    }
+    ids.add(event.id);
+    if (event.once !== true || typeof event.triggerAtRemainingSeconds !== 'number' ||
+      event.triggerAtRemainingSeconds < 0 || typeof duration !== 'number' || event.triggerAtRemainingSeconds >= duration) {
+      errors.push(`${event.id} must be once and trigger within the level duration`);
+    }
+    validateSpawn(event.spawn, errors);
   }
 }
 

@@ -6,17 +6,17 @@ Codex must not set any phase to `PASS`.
 
 ## Current Phase
 
-- Phase: 12
-- Name: Level framework and Level 1 vertical slice
+- Phase: 13
+- Name: Level 2 - After-work rush
 - Status: READY_FOR_REVIEW
-- Updated: 2026-07-14
+- Updated: 2026-07-15
 
 ## Current Audit
 
-- Audit: Prompt 04 targeted vertical charge meter and projectile ground shadow patch after Gate C
-- Status: READY_FOR_REVIEW
-- Evidence: `docs/evidence/PHASE_04_VERTICAL_METER_SHADOW_FIX.md`
-- Prompt 13 remains `NOT_STARTED`.
+- Audit: Pre-Prompt 13 check
+- Status: PASS (user-provided prerequisite)
+- Evidence: user-provided status in Prompt 13 request.
+- Prompt 14 remains `NOT_STARTED`.
 
 ## Audit History
 
@@ -166,7 +166,7 @@ Codex must not set any phase to `PASS`.
 | 10 | READY_FOR_REVIEW | `docs/evidence/PHASE_10.md` |
 | 11 | READY_FOR_REVIEW | `docs/evidence/PHASE_11.md` |
 | 12 | READY_FOR_REVIEW | `docs/evidence/PHASE_12.md` |
-| 13 | NOT_STARTED | |
+| 13 | READY_FOR_REVIEW | `docs/evidence/PHASE_13.md` |
 | 14 | NOT_STARTED | |
 | 15 | NOT_STARTED | |
 | 16 | NOT_STARTED | |

@@ -9,6 +9,7 @@ export const LEVEL_01 = loadLevelDefinition({
   seed: 'level-01-seed',
   availablePoopTypes: ['normal_poop'],
   aimAssist: 'disabled',
+  visual: { profile: 'day', skylineColor: 0x172033, alleyColor: 0x293241, rooftopColor: 0x3d2f27 },
   spawn: {
     intervalSeconds: 1.15,
     spawnXPadding: 72,
@@ -21,6 +22,7 @@ export const LEVEL_01 = loadLevelDefinition({
       { laneId: 'front_road', weight: 3 }
     ]
   },
+  events: [],
   stars: [
     { id: 'score_target', label: '達成目標分數 500', targetScore: 500 },
     { id: 'combo_target', label: '完成 5 連擊', targetCombo: 5 },

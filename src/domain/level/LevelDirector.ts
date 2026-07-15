@@ -27,12 +27,16 @@ export type LevelSession = {
   readonly metrics: LevelMetrics;
   readonly result?: LevelResult;
   readonly completionCount: number;
+  readonly triggeredEventIds: readonly string[];
 };
 
-export function spawnConfigForLevel(definition: LevelDefinition): NPCSpawnConfig {
+export function spawnConfigForLevel(definition: LevelDefinition, session?: LevelSession): NPCSpawnConfig {
+  const activeEvent = session
+    ? [...definition.events].reverse().find((event) => session.triggeredEventIds.includes(event.id))
+    : undefined;
   return {
     seed: definition.seed,
-    ...definition.spawn
+    ...(activeEvent?.spawn ?? definition.spawn)
   };
 }
 
@@ -45,8 +49,9 @@ export function createLevelSession(definition: LevelDefinition, attempt = 1): Le
     countdownRemainingSeconds: definition.countdownSeconds,
     elapsedSeconds: 0,
     remainingSeconds: definition.durationSeconds,
-    metrics: { totalScore: 0, highestCombo: 0, hitCount: 0, throwCount: 0 },
-    completionCount: 0
+    metrics: { totalScore: 0, highestCombo: 0, hitCount: 0, throwCount: 0, npcHitCounts: {} },
+    completionCount: 0,
+    triggeredEventIds: []
   };
 }
 
@@ -64,7 +69,15 @@ export function updateLevelSession(session: LevelSession, deltaSeconds: number):
   }
   const elapsedSeconds = Math.min(session.definition.durationSeconds, session.elapsedSeconds + delta);
   const remainingSeconds = Math.max(0, session.definition.durationSeconds - elapsedSeconds);
-  const updated = { ...session, elapsedSeconds, remainingSeconds };
+  const newlyTriggered = session.definition.events
+    .filter((event) => remainingSeconds <= event.triggerAtRemainingSeconds && !session.triggeredEventIds.includes(event.id))
+    .map((event) => event.id);
+  const updated = {
+    ...session,
+    elapsedSeconds,
+    remainingSeconds,
+    triggeredEventIds: [...session.triggeredEventIds, ...newlyTriggered]
+  };
   return remainingSeconds <= 0 ? settleLevel(updated, 'timeout') : updated;
 }
 
@@ -76,7 +89,8 @@ export function updateLevelMetrics(session: LevelSession, metrics: Partial<Level
       totalScore: metrics.totalScore ?? session.metrics.totalScore,
       highestCombo: Math.max(session.metrics.highestCombo, metrics.highestCombo ?? 0),
       hitCount: metrics.hitCount ?? session.metrics.hitCount,
-      throwCount: metrics.throwCount ?? session.metrics.throwCount
+      throwCount: metrics.throwCount ?? session.metrics.throwCount,
+      npcHitCounts: metrics.npcHitCounts ?? session.metrics.npcHitCounts
     }
   };
   return evaluateObjective(updated.definition, updated.metrics).complete ? settleLevel(updated, 'success') : updated;

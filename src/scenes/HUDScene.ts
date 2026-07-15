@@ -4,6 +4,7 @@ import { type AlertState, createAlertState } from '../domain/alert/AlertSystem';
 import { type PoopInventoryState, createPoopInventory, selectedSlot } from '../domain/poop/PoopInventory';
 import { type ScoreState, createScoreState } from '../domain/score/ScoreCalculator';
 import type { LevelSession } from '../domain/level/LevelDirector';
+import { LEVEL_02 } from '../data/levels/level02';
 import { eventBus } from '../runtime/EventBus';
 import { GAME_CONFIG } from '../runtime/GameConfig';
 import { GameEvents } from '../runtime/GameEvents';
@@ -251,21 +252,29 @@ export class HUDScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     retry.setData('role', 'retry-level');
+    const hasNextLevel = session.definition.id === 'level_01';
     const next = this.add
       .text(GAME_CONFIG.width / 2 + 110, 590, '下一關', {
-        fontFamily: 'sans-serif', fontSize: '24px', color: '#9ca3af', backgroundColor: '#374151', padding: { x: 22, y: 11 }
+        fontFamily: 'sans-serif', fontSize: '24px', color: hasNextLevel ? '#111827' : '#9ca3af',
+        backgroundColor: hasNextLevel ? '#f6bd60' : '#374151', padding: { x: 22, y: 11 }
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true })
-      .setData('role', 'next-level-placeholder');
+      .setData('role', hasNextLevel ? 'next-level' : 'next-level-placeholder');
     const nextStatus = this.add.text(GAME_CONFIG.width / 2, 645, '下一關尚未開放', {
       fontFamily: 'monospace', fontSize: '17px', color: '#9ca3af'
     }).setOrigin(0.5).setVisible(false);
 
     retry.on(Phaser.Input.Events.POINTER_UP, () => {
-      this.scene.get(SceneKeys.Game).scene.restart();
+      this.scene.get(SceneKeys.Game).scene.restart({ levelDefinition: session.definition });
     });
-    next.on(Phaser.Input.Events.POINTER_UP, () => nextStatus.setVisible(true));
+    next.on(Phaser.Input.Events.POINTER_UP, () => {
+      if (hasNextLevel) {
+        this.scene.get(SceneKeys.Game).scene.restart({ levelDefinition: LEVEL_02 });
+      } else {
+        nextStatus.setVisible(true);
+      }
+    });
     overlay.add([panel, title, summary, stars, retry, next, nextStatus]);
     this.failureOverlay = overlay;
     if (window.__SHIMING_BIDA_DEBUG__) {

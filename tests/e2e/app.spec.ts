@@ -876,7 +876,7 @@ test('phase 12 runs Level 1 through pause, timeout result, and deterministic cle
   const retried = await levelSession(page);
   expect(retried).toMatchObject({ attempt: 2, phase: 'countdown', remainingSeconds: 90 });
   expect(retried.definition.seed).toBe(settled.definition.seed);
-  expect(retried.metrics).toEqual({ totalScore: 0, highestCombo: 0, hitCount: 0, throwCount: 0 });
+  expect(retried.metrics).toEqual({ totalScore: 0, highestCombo: 0, hitCount: 0, throwCount: 0, npcHitCounts: {} });
   expect((await npcSpawner(page)).npcs).toHaveLength(0);
   expect((await projectileSystem(page)).projectiles).toHaveLength(0);
   expect((await scoreState(page)).comboCount).toBe(0);
@@ -905,6 +905,56 @@ test('phase 12 runs Level 1 through pause, timeout result, and deterministic cle
   await expect.poll(() => activeScenes(page)).toContain('GameScene');
   expect(await inputListenerCount(page)).toBe(inputListenersBeforeMenuCycle);
   expect(await eventBusListenerCounts(page)).toEqual(eventListenersBeforeMenuCycle);
+});
+
+test('phase 13 plays Level 2 with sticky poop and triggers the final rush once', async ({ page }) => {
+  test.setTimeout(60_000);
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => consoleErrors.push(error.message));
+
+  await page.goto('/');
+  await expect(page.locator('canvas')).toHaveAttribute('data-game-ready', 'true');
+  const canvas = page.locator('canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height * (475 / 720));
+  await expect.poll(() => activeScenes(page)).toContain('GameScene');
+
+  let session = await levelSession(page);
+  expect(session.definition).toMatchObject({
+    id: 'level_02', seed: 'level-02-rush-seed', availablePoopTypes: ['normal_poop', 'sticky_poop'],
+    visual: { profile: 'evening' }
+  });
+  await advanceLevelTime(page, 3);
+  await page.keyboard.press('KeyE');
+  await expect.poll(async () => (await poopInventory(page)).selectedPoopType).toBe('sticky_poop');
+
+  const initialRants = (await gameplayEvents(page)).filter((event) => event.type === 'NPC_RANT_STARTED').length;
+  await instantMinimumThrowAtSpawnedOffset(page, 'jogger', 210, 0);
+  const joggerId = await waitForNewRantEvent(page, initialRants, 12_000);
+  expect(joggerId).not.toBeNull();
+  await expect.poll(async () => (await scoreState(page)).totalScore).toBeGreaterThan(0);
+  expect((await scoreState(page)).breakdowns.at(-1)?.ammoType).toBe('sticky_poop');
+  expect((await levelSession(page)).metrics.npcHitCounts?.jogger).toBe(1);
+
+  const beforeRush = await levelSession(page);
+  await advanceLevelTime(page, beforeRush.remainingSeconds - 20);
+  session = await levelSession(page);
+  expect(session.remainingSeconds).toBeLessThanOrEqual(20);
+  expect(session.remainingSeconds).toBeGreaterThan(19);
+  expect(session.triggeredEventIds).toEqual(['final_20_second_rush']);
+  await advanceLevelTime(page, 1);
+  expect((await levelSession(page)).triggeredEventIds).toEqual(['final_20_second_rush']);
+  await page.screenshot({ path: 'docs/evidence/phase-13-level-02-rush.png', fullPage: true });
+
+  await advanceLevelTime(page, 20);
+  await expect.poll(async () => (await levelSession(page)).phase).toBe('settled');
+  expect((await levelSession(page)).completionCount).toBe(1);
+  await expect.poll(() => hudResultText(page)).toContain('時間到');
+  expect(consoleErrors).toEqual([]);
 });
 
 test('phase 12 settles Level 1 success once from legal normal-poop scoring', async ({ page }) => {

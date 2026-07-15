@@ -452,7 +452,11 @@ export class GameScene extends Phaser.Scene {
       this.levelSession = updateLevelMetrics(this.levelSession, {
         hitCount: this.levelSession.metrics.hitCount + hitResult.events.filter(
           (event) => event.type === GameplayEventTypes.ProjectileHit
-        ).length
+        ).length,
+        npcHitCounts: hitResult.events.reduce((counts, event) => {
+          if (event.type !== GameplayEventTypes.ProjectileHit) return counts;
+          return { ...counts, [event.npcType]: (counts[event.npcType] ?? 0) + 1 };
+        }, { ...(this.levelSession.metrics.npcHitCounts ?? {}) })
       });
       this.projectileSystem.recycleByIds(hitResult.projectileIdsToRecycle);
       this.hitTokens = new Set(removeHitTokensForProjectiles(this.hitTokens, hitResult.projectileIdsToRecycle));
@@ -550,7 +554,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private levelSpawnConfig(): NPCSpawnConfig {
-    return spawnConfigForLevel(this.levelDefinition);
+    return spawnConfigForLevel(this.levelDefinition, this.levelSession);
   }
 
   private shouldShowAimAssist(): boolean {
@@ -667,9 +671,9 @@ export class GameScene extends Phaser.Scene {
 
   private renderZoneBands(layout: WorldLayout): void {
     const colors = {
-      skyline: 0x172033,
-      alley: 0x293241,
-      rooftop: 0x3d2f27
+      skyline: this.levelDefinition.visual.skylineColor,
+      alley: this.levelDefinition.visual.alleyColor,
+      rooftop: this.levelDefinition.visual.rooftopColor
     };
 
     for (const zone of layout.zones) {

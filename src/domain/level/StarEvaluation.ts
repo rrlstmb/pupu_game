@@ -23,6 +23,10 @@ export function evaluateStars(definition: LevelDefinition, metrics: LevelMetrics
     if (condition.id === 'combo_target') {
       return { id: condition.id, label: condition.label, passed: metrics.highestCombo >= condition.targetCombo, actual: metrics.highestCombo, target: condition.targetCombo };
     }
+    if (condition.id === 'npc_hit_target') {
+      const actual = condition.npcTypes.reduce((total, npcType) => total + (metrics.npcHitCounts?.[npcType] ?? 0), 0);
+      return { id: condition.id, label: condition.label, passed: actual >= condition.targetHits, actual, target: condition.targetHits };
+    }
     return { id: condition.id, label: condition.label, passed: accuracy > condition.minimumExclusive, actual: accuracy, target: condition.minimumExclusive };
   });
   return { starsEarned: conditions.filter((condition) => condition.passed).length, conditions };
