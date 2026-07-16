@@ -61,7 +61,9 @@ export function createLevelSession(definition: LevelDefinition, attempt = 1): Le
     metrics: {
       totalScore: 0, highestCombo: 0, hitCount: 0, throwCount: 0,
       npcHitCounts: {}, interactionCounts: {}, maxSplashTargetsHit: 0,
-      zoneAffectedNpcCount: 0, maxNpcAffectedBySingleZone: 0
+      zoneAffectedNpcCount: 0, maxNpcAffectedBySingleZone: 0,
+      counterattacksTelegraphed: 0, counterattacksFired: 0, counterattacksDodged: 0,
+      counterattacksHitPlayer: 0, maxConcurrentCounterattacksObserved: 0
     },
     completionCount: 0,
     triggeredEventIds: []
@@ -107,7 +109,12 @@ export function updateLevelMetrics(session: LevelSession, metrics: Partial<Level
       interactionCounts: metrics.interactionCounts ?? session.metrics.interactionCounts,
       maxSplashTargetsHit: Math.max(session.metrics.maxSplashTargetsHit ?? 0, metrics.maxSplashTargetsHit ?? 0),
       zoneAffectedNpcCount: metrics.zoneAffectedNpcCount ?? session.metrics.zoneAffectedNpcCount,
-      maxNpcAffectedBySingleZone: Math.max(session.metrics.maxNpcAffectedBySingleZone ?? 0, metrics.maxNpcAffectedBySingleZone ?? 0)
+      maxNpcAffectedBySingleZone: Math.max(session.metrics.maxNpcAffectedBySingleZone ?? 0, metrics.maxNpcAffectedBySingleZone ?? 0),
+      counterattacksTelegraphed: metrics.counterattacksTelegraphed ?? session.metrics.counterattacksTelegraphed,
+      counterattacksFired: metrics.counterattacksFired ?? session.metrics.counterattacksFired,
+      counterattacksDodged: metrics.counterattacksDodged ?? session.metrics.counterattacksDodged,
+      counterattacksHitPlayer: metrics.counterattacksHitPlayer ?? session.metrics.counterattacksHitPlayer,
+      maxConcurrentCounterattacksObserved: Math.max(session.metrics.maxConcurrentCounterattacksObserved ?? 0, metrics.maxConcurrentCounterattacksObserved ?? 0)
     }
   };
   return evaluateObjective(updated.definition, updated.metrics).complete ? settleLevel(updated, 'success') : updated;

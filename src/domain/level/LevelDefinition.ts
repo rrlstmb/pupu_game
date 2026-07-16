@@ -13,7 +13,7 @@ export type LevelSpawnDefinition = {
 };
 
 export type LevelVisualDefinition = {
-  readonly profile: 'day' | 'evening' | 'rainy' | 'market_evening' | 'windy_afternoon' | 'cleanup_day';
+  readonly profile: 'day' | 'evening' | 'rainy' | 'market_evening' | 'windy_afternoon' | 'cleanup_day' | 'residential_alley';
   readonly skylineColor: number;
   readonly alleyColor: number;
   readonly rooftopColor: number;
@@ -68,6 +68,37 @@ export type CleanupEventDefinition = {
   readonly clearDelaySeconds: number;
 };
 
+export type CounterattackDefinition = {
+  readonly hitThreshold: number;
+  readonly telegraphDurationSeconds: number;
+  readonly projectileTravelDurationSeconds: number;
+  readonly targetMode: 'snapshot_player_x';
+  readonly targetHalfWidth: number;
+  readonly minimumDodgeDistance: number;
+  readonly projectileRadius: number;
+  readonly playerHitboxPadding: number;
+  readonly maxConcurrentTelegraphs: number;
+  readonly maxConcurrentProjectiles: number;
+  readonly globalMinimumGapSeconds: number;
+  readonly perNpcCooldownSeconds: number;
+  readonly minimumEscapeWidth: number;
+  readonly queueLimit: number;
+  readonly schedulingPolicy: 'fifo_source_id';
+  readonly alertPenalty: number;
+  readonly staggerDurationSeconds: number;
+  readonly throwLockSeconds: number;
+  readonly invulnerabilitySeconds: number;
+  readonly staggerMovementMultiplier: number;
+  readonly projectilePoolSize: number;
+  readonly maxRetaliationsPerNpc: number;
+  readonly angerResetRule: 'after_attack';
+};
+
+export type CounterattackEventDefinition = {
+  readonly globalGapMultiplier: number;
+  readonly maxConcurrentTelegraphsBonus: number;
+};
+
 export type LevelTimedEvent = {
   readonly id: string;
   readonly triggerAtRemainingSeconds: number;
@@ -79,6 +110,7 @@ export type LevelTimedEvent = {
   readonly windSegmentId?: string;
   readonly presentationCue?: string;
   readonly cleanup?: CleanupEventDefinition;
+  readonly counterattack?: CounterattackEventDefinition;
 };
 
 export type LevelStarCondition =
@@ -88,7 +120,8 @@ export type LevelStarCondition =
   | { readonly id: 'npc_hit_target'; readonly label: string; readonly npcTypes: readonly NPCType[]; readonly targetHits: number }
   | { readonly id: 'interaction_target'; readonly label: string; readonly interactionTag: string; readonly targetCount: number }
   | { readonly id: 'splash_multi_hit_target'; readonly label: string; readonly targetCount: number }
-  | { readonly id: 'area_zone_target'; readonly label: string; readonly mode: 'cumulative' | 'single_zone'; readonly targetCount: number };
+  | { readonly id: 'area_zone_target'; readonly label: string; readonly mode: 'cumulative' | 'single_zone'; readonly targetCount: number }
+  | { readonly id: 'counter_dodge_target'; readonly label: string; readonly targetCount: number };
 
 export type LevelDefinition = {
   readonly id: string;
@@ -106,6 +139,7 @@ export type LevelDefinition = {
   readonly bounceSurfaces?: readonly BounceSurfaceDefinition[];
   readonly areaZone?: AreaEffectZoneRules;
   readonly cleaner?: CleanerRules;
+  readonly counterattack?: CounterattackDefinition;
   readonly stars: readonly LevelStarCondition[];
 };
 
@@ -151,6 +185,7 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
   validateBounceSurfaces(input.bounceSurfaces, errors);
   validateAreaZone(input.areaZone, errors);
   validateCleaner(input.cleaner, errors);
+  validateCounterattack(input.counterattack, errors);
   validateStars(input.stars, errors);
   validateScoreTargetConsistency(input, errors);
   return errors.length > 0
@@ -200,7 +235,7 @@ function validateStars(input: unknown, errors: string[]): void {
   }
   const ids = input.filter(isRecord).map((condition) => condition.id);
   const allowedIds: readonly LevelStarCondition['id'][] = [
-    'score_target', 'combo_target', 'accuracy_target', 'npc_hit_target', 'interaction_target', 'splash_multi_hit_target', 'area_zone_target'
+    'score_target', 'combo_target', 'accuracy_target', 'npc_hit_target', 'interaction_target', 'splash_multi_hit_target', 'area_zone_target', 'counter_dodge_target'
   ];
   if (new Set(ids).size !== 3 || !ids.includes('score_target') || ids.some((id) => !allowedIds.includes(id as LevelStarCondition['id']))) {
     errors.push('stars must define three unique conditions including score_target');
@@ -230,12 +265,14 @@ function validateStars(input: unknown, errors: string[]): void {
     } else if (condition.id === 'area_zone_target' &&
       (!['cumulative', 'single_zone'].includes(String(condition.mode)) || !isPositiveInteger(condition.targetCount))) {
       errors.push('area_zone_target requires a mode and positive targetCount');
+    } else if (condition.id === 'counter_dodge_target' && !isPositiveInteger(condition.targetCount)) {
+      errors.push('counter_dodge_target.targetCount must be a positive integer');
     }
   }
 }
 
 function validateVisual(input: unknown, errors: string[]): void {
-  if (!isRecord(input) || !['day', 'evening', 'rainy', 'market_evening', 'windy_afternoon', 'cleanup_day'].includes(String(input.profile))) {
+  if (!isRecord(input) || !['day', 'evening', 'rainy', 'market_evening', 'windy_afternoon', 'cleanup_day', 'residential_alley'].includes(String(input.profile))) {
     errors.push('visual must define a supported profile');
     return;
   }
@@ -279,6 +316,35 @@ function validateEvents(input: unknown, duration: unknown, errors: string[]): vo
       !isPositiveNumber(event.cleanup.warningSeconds) || !isPositiveNumber(event.cleanup.clearDelaySeconds))) {
       errors.push(`${event.id} cleanupChannel requires a valid cleanup definition`);
     }
+    if (event.counterattack !== undefined && (!isRecord(event.counterattack) ||
+      !isPositiveNumber(event.counterattack.globalGapMultiplier) ||
+      typeof event.counterattack.maxConcurrentTelegraphsBonus !== 'number' ||
+      !Number.isInteger(event.counterattack.maxConcurrentTelegraphsBonus) || event.counterattack.maxConcurrentTelegraphsBonus < 0)) {
+      errors.push(`${event.id} counterattack profile must define positive gap multiplier and non-negative telegraph bonus`);
+    }
+  }
+}
+
+function validateCounterattack(input: unknown, errors: string[]): void {
+  if (input === undefined) return;
+  if (!isRecord(input) || input.targetMode !== 'snapshot_player_x' || input.schedulingPolicy !== 'fifo_source_id' ||
+    input.angerResetRule !== 'after_attack') {
+    errors.push('counterattack must define snapshot targeting, FIFO scheduling, and anger reset');
+    return;
+  }
+  const positive = [
+    'hitThreshold', 'telegraphDurationSeconds', 'projectileTravelDurationSeconds', 'targetHalfWidth',
+    'minimumDodgeDistance', 'projectileRadius', 'maxConcurrentTelegraphs', 'maxConcurrentProjectiles',
+    'globalMinimumGapSeconds', 'perNpcCooldownSeconds', 'minimumEscapeWidth', 'queueLimit', 'alertPenalty',
+    'staggerDurationSeconds', 'throwLockSeconds', 'invulnerabilitySeconds', 'projectilePoolSize', 'maxRetaliationsPerNpc'
+  ];
+  if (positive.some((key) => !isPositiveNumber(input[key])) ||
+    typeof input.playerHitboxPadding !== 'number' || input.playerHitboxPadding < 0 ||
+    typeof input.staggerMovementMultiplier !== 'number' || input.staggerMovementMultiplier <= 0 || input.staggerMovementMultiplier > 1) {
+    errors.push('counterattack numeric rules must be positive and bounded');
+  }
+  for (const key of ['hitThreshold', 'maxConcurrentTelegraphs', 'maxConcurrentProjectiles', 'queueLimit', 'projectilePoolSize', 'maxRetaliationsPerNpc']) {
+    if (!Number.isInteger(input[key])) errors.push(`counterattack.${key} must be an integer`);
   }
 }
 

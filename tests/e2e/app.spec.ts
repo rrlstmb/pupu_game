@@ -798,6 +798,73 @@ test('phase 17 level 6 creates controlled stink zones and cleans them with warni
   await page.screenshot({ path: 'docs/evidence/phase-17-cleanup-day.png', fullPage: true });
 });
 
+test('phase 18 level 7 telegraphs snapshot counterattacks that can hit or be dodged', async ({ page }) => {
+  test.setTimeout(100_000);
+  await page.goto('/');
+  await expect(page.locator('canvas')).toHaveAttribute('data-game-ready', 'true');
+  const box = await page.locator('canvas').boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(box!.x + box!.width * (1040 / 1280), box!.y + box!.height * (560 / 720));
+  await expect.poll(() => activeScenes(page)).toContain('GameScene');
+  await startLevelForTest(page);
+  await expect.poll(async () => (await levelSession(page)).definition.id).toBe('level_07');
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.clearNPCSandbox?.(true));
+
+  const targetId = await hitAngryTwice(page);
+  const stationaryAlert = (await alertState(page)).value;
+  await expect.poll(async () => (await counterattackState(page)).instances.some((instance) => instance.state === 'telegraph')).toBe(true);
+  const lockedX = (await counterattackState(page)).instances[0].lockedTargetX;
+  await page.screenshot({ path: 'docs/evidence/phase-18-counterattack-telegraph.png', fullPage: true });
+  await expect.poll(async () => (await counterattackState(page)).stats.hitPlayer, { timeout: 8_000 }).toBe(1);
+  expect((await alertState(page)).value).toBeGreaterThan(stationaryAlert);
+  expect((await counterattackState(page)).instances).toHaveLength(0);
+
+  expect(targetId).toBeGreaterThan(0);
+  await page.evaluate(() => {
+    const debug = window.__SHIMING_BIDA_DEBUG__;
+    if (!debug?.levelSession) throw new Error('Level session is unavailable for retry');
+    debug.game.scene.getScene('GameScene').scene.restart({ levelDefinition: debug.levelSession.definition });
+  });
+  await startLevelForTest(page);
+  expect(await counterattackState(page)).toMatchObject({
+    instances: [], queue: [], staggerSeconds: 0, throwLockSeconds: 0, invulnerabilitySeconds: 0,
+    stats: { telegraphed: 0, fired: 0, dodged: 0, hitPlayer: 0 }
+  });
+  await page.evaluate((x) => window.__SHIMING_BIDA_DEBUG__?.setPlayerX?.(x), lockedX);
+  const secondTargetId = await hitAngryTwice(page);
+  const secondPending = await counterattackState(page);
+  expect(
+    secondPending.queue.includes(secondTargetId) || secondPending.instances.some((instance) => instance.sourceNpcId === secondTargetId),
+    JSON.stringify(secondPending)
+  ).toBe(true);
+  await expect.poll(async () => (await counterattackState(page)).stats.telegraphed, { timeout: 8_000 }).toBe(1);
+  const second = (await counterattackState(page)).instances[0];
+  expect(second.lockedTargetX).toBeCloseTo(lockedX, 0);
+  await page.keyboard.down('KeyD');
+  await expect.poll(async () => (await playerState(page)).x, { timeout: 3_000 }).toBeGreaterThan(second.lockedTargetX + 100);
+  await page.keyboard.up('KeyD');
+  await expect.poll(async () => (await counterattackState(page)).stats.dodged, { timeout: 8_000 }).toBe(1);
+  expect((await counterattackState(page)).stats.hitPlayer).toBe(0);
+
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.advanceLevelTime?.(98));
+  const climax = await levelSession(page);
+  expect(climax.triggeredEventIds.filter((id) => id === 'anger_chain_hazard')).toHaveLength(1);
+  expect(climax.triggeredEventIds).toContain('anger_chain_spawn');
+  await page.evaluate(() => {
+    const debug = window.__SHIMING_BIDA_DEBUG__;
+    debug?.clearNPCSandbox?.(true);
+    debug?.spawnNPCSandbox?.('angry_pedestrian', 720, 'front_road');
+    debug?.spawnNPCSandbox?.('angry_pedestrian', 780, 'mid_sidewalk');
+    debug?.spawnNPCSandbox?.('angry_pedestrian', 840, 'back_shop');
+  });
+  const angryIds = (await npcSpawner(page)).npcs.map((npc) => npc.id);
+  await page.evaluate((ids) => window.__SHIMING_BIDA_DEBUG__?.primeCounterattackSandbox?.(ids), angryIds);
+  await expect.poll(async () => (await counterattackState(page)).stats.maxConcurrentObserved, { timeout: 6_000 }).toBeGreaterThanOrEqual(2);
+  expect((await counterattackState(page)).stats.maxConcurrentObserved).toBeLessThanOrEqual(3);
+  expect((await counterattackViewPool(page)).created).toBeLessThanOrEqual(3);
+  expect(await debugOverlayVisible(page)).toBe(false);
+});
+
 test('phase 11 npc sandbox spawns complete roster with visible tactical states', async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto('/');
@@ -915,7 +982,9 @@ test('phase 12 runs Level 1 through pause, timeout result, and deterministic cle
   expect(retried.metrics).toEqual({
     totalScore: 0, highestCombo: 0, hitCount: 0, throwCount: 0,
     npcHitCounts: {}, interactionCounts: {}, maxSplashTargetsHit: 0,
-    zoneAffectedNpcCount: 0, maxNpcAffectedBySingleZone: 0
+    zoneAffectedNpcCount: 0, maxNpcAffectedBySingleZone: 0,
+    counterattacksTelegraphed: 0, counterattacksFired: 0, counterattacksDodged: 0,
+    counterattacksHitPlayer: 0, maxConcurrentCounterattacksObserved: 0
   });
   expect((await npcSpawner(page)).npcs).toHaveLength(0);
   expect((await projectileSystem(page)).projectiles).toHaveLength(0);
@@ -1554,6 +1623,17 @@ async function fireAtHittableNPCAndWaitForRant(page: Page, _stableOnly = true): 
   return npcId;
 }
 
+async function hitAngryTwice(page: Page): Promise<number> {
+  const initialRants = (await gameplayEvents(page)).filter((event) => event.type === 'NPC_RANT_STARTED').length;
+  await instantMinimumThrowAtSpawnedOffset(page, 'angry_pedestrian', 120, 0);
+  const npcId = await waitForNewRantEvent(page, initialRants, 12_000, false);
+  if (npcId === null) throw new Error('Controlled angry-pedestrian throw missed');
+  await expect.poll(async () => npcById(page, npcId).then((npc) => npc?.state), { timeout: 8_000 }).toBe('Walking');
+  await debugMinimumRepeatThrow(page, npcId);
+  await expect.poll(async () => npcById(page, npcId).then((npc) => npc?.validHitCount ?? 0), { timeout: 12_000 }).toBe(2);
+  return npcId;
+}
+
 async function chargeThrow(page: Page, minimumPower: number): Promise<void> {
   await page.keyboard.down('Space');
   await expect.poll(async () => (await chargeState(page)).isCharging).toBe(true);
@@ -1720,6 +1800,40 @@ async function cleanerSystem(page: Page): Promise<{
     const state = window.__SHIMING_BIDA_DEBUG__?.cleanerSystem;
     if (!state) throw new Error('Cleaner system debug state is not available');
     return { locks: [...state.locks], truck: state.truck ? { ...state.truck } : undefined };
+  });
+}
+
+async function counterattackState(page: Page): Promise<{
+  instances: Array<{ id: string; sourceNpcId: number; state: string; lockedTargetX: number; remainingSeconds: number }>;
+  queue: number[];
+  staggerSeconds: number;
+  throwLockSeconds: number;
+  invulnerabilitySeconds: number;
+  sourceProgress: Record<number, { anger: number; retaliationCount: number; cooldownSeconds: number }>;
+  stats: { telegraphed: number; fired: number; dodged: number; hitPlayer: number; maxConcurrentObserved: number };
+}> {
+  return page.evaluate(() => {
+    const state = window.__SHIMING_BIDA_DEBUG__?.counterattackState;
+    if (!state) throw new Error('Counterattack debug state is not available');
+    return {
+      instances: state.instances.map((instance) => ({
+        id: instance.id, sourceNpcId: instance.sourceNpcId, state: instance.state, lockedTargetX: instance.lockedTargetX, remainingSeconds: instance.remainingSeconds
+      })),
+      queue: [...state.queue],
+      staggerSeconds: state.staggerSeconds,
+      throwLockSeconds: state.throwLockSeconds,
+      invulnerabilitySeconds: state.invulnerabilitySeconds,
+      sourceProgress: { ...state.sourceProgress },
+      stats: { ...state.stats }
+    };
+  });
+}
+
+async function counterattackViewPool(page: Page): Promise<{ active: number; pooled: number; created: number; reused: number }> {
+  return page.evaluate(() => {
+    const stats = window.__SHIMING_BIDA_DEBUG__?.counterattackViewPool;
+    if (!stats) throw new Error('Counterattack view-pool stats are not available');
+    return stats;
   });
 }
 

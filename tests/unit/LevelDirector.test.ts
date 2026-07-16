@@ -77,7 +77,9 @@ describe('LevelDirector', () => {
     expect(reset.metrics).toEqual({
       totalScore: 0, highestCombo: 0, hitCount: 0, throwCount: 0,
       npcHitCounts: {}, interactionCounts: {}, maxSplashTargetsHit: 0,
-      zoneAffectedNpcCount: 0, maxNpcAffectedBySingleZone: 0
+      zoneAffectedNpcCount: 0, maxNpcAffectedBySingleZone: 0,
+      counterattacksTelegraphed: 0, counterattacksFired: 0, counterattacksDodged: 0,
+      counterattacksHitPlayer: 0, maxConcurrentCounterattacksObserved: 0
     });
     expect(reset.result).toBeUndefined();
     expect(reset.remainingSeconds).toBe(90);

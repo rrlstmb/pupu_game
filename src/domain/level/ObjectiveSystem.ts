@@ -11,6 +11,11 @@ export type LevelMetrics = {
   readonly maxSplashTargetsHit?: number;
   readonly zoneAffectedNpcCount?: number;
   readonly maxNpcAffectedBySingleZone?: number;
+  readonly counterattacksTelegraphed?: number;
+  readonly counterattacksFired?: number;
+  readonly counterattacksDodged?: number;
+  readonly counterattacksHitPlayer?: number;
+  readonly maxConcurrentCounterattacksObserved?: number;
 };
 
 export type ObjectiveState = {

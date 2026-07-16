@@ -22,6 +22,7 @@ import {
   type AlertState
 } from '../domain/alert/AlertSystem';
 import { isPlayerInCover } from '../domain/alert/CoverVisibility';
+import { createCounterattackState, registerAngryHit, updateCounterattacks, type CounterattackState } from '../domain/counterattack/CounterattackSystem';
 import { removeHitTokensForProjectiles, resolveProjectileNPCHits } from '../domain/gameplay/HitDetection';
 import {
   collectNPCStateTransitionEvents,
@@ -100,6 +101,7 @@ import { AimAssist } from '../systems/projectile/AimAssist';
 import { PhaserProjectileSystem } from '../systems/projectile/PhaserProjectileSystem';
 import { PhaserChargeMeter } from '../systems/projectile/PhaserChargeMeter';
 import { PhaserWindIndicator } from '../systems/wind/PhaserWindIndicator';
+import { PhaserCounterattackSystem } from '../systems/counterattack/PhaserCounterattackSystem';
 
 export class GameScene extends Phaser.Scene {
   private levelDefinition: LevelDefinition = LEVEL_01;
@@ -122,6 +124,8 @@ export class GameScene extends Phaser.Scene {
   private poopInventory: PoopInventoryState = createPoopInventory(POOP_DEFINITIONS);
   private environmentalEffects: EnvironmentalEffectState = createEnvironmentalEffectState();
   private cleanerState: CleanerSystemState = createCleanerSystemState();
+  private counterattackState: CounterattackState = createCounterattackState();
+  private counterattackSystem?: PhaserCounterattackSystem;
   private projectileConfig: ProjectileConfig = NORMAL_POOP_PROJECTILE_CONFIG;
   private chargeState: ChargeState = createChargeState();
   private lastLandingHitDebug?: {
@@ -161,6 +165,7 @@ export class GameScene extends Phaser.Scene {
     this.poopInventory = createPoopInventory(levelPoopDefinitions);
     this.environmentalEffects = createEnvironmentalEffectState();
     this.cleanerState = createCleanerSystemState();
+    this.counterattackState = createCounterattackState();
     this.projectileConfig = NORMAL_POOP_PROJECTILE_CONFIG;
     this.chargeState = createChargeState();
     this.windState = CALM_WIND_STATE;
@@ -181,6 +186,9 @@ export class GameScene extends Phaser.Scene {
     this.windIndicator = new PhaserWindIndicator(this, GAME_CONFIG.width - 285, 82);
     this.windIndicator.sync(this.windState);
     this.npcSystem = new PhaserNPCSystem(this, NPC_DEFINITIONS);
+    this.counterattackSystem = this.levelDefinition.counterattack
+      ? new PhaserCounterattackSystem(this, this.levelDefinition.counterattack)
+      : undefined;
     this.npcSpawnerState = createNPCSpawnerState();
     emitSceneReady(this);
     this.scene.launch(SceneKeys.HUD);
@@ -289,6 +297,8 @@ export class GameScene extends Phaser.Scene {
       this.aimAssist.dispose();
       this.chargeMeter.dispose();
       this.windIndicator.dispose();
+      this.counterattackSystem?.dispose();
+      this.counterattackSystem = undefined;
       this.npcSystem.dispose();
       this.scrollingLayers.length = 0;
       this.debugOverlay?.destroy(true);
@@ -328,11 +338,18 @@ export class GameScene extends Phaser.Scene {
     }
 
     const input = this.inputAdapter.snapshot();
+    const staggerMultiplier = this.counterattackState.staggerSeconds > 0
+      ? this.levelDefinition.counterattack?.staggerMovementMultiplier ?? 1
+      : 1;
     this.playerState = updatePlayerMovement(
       this.playerState,
       input,
       this.layout.rooftop,
-      PLAYER_MOVEMENT_CONFIG,
+      {
+        ...PLAYER_MOVEMENT_CONFIG,
+        maxSpeed: PLAYER_MOVEMENT_CONFIG.maxSpeed * staggerMultiplier,
+        acceleration: PLAYER_MOVEMENT_CONFIG.acceleration * staggerMultiplier
+      },
       deltaSeconds
     );
     this.alertState = updateAlertOverTime(
@@ -371,6 +388,7 @@ export class GameScene extends Phaser.Scene {
       this.gameplayEvents.push(...transitionEvents);
       this.applyGameplayEventsToScore(transitionEvents);
     }
+    this.updateCounterattackRuntime(deltaSeconds);
     this.environmentalEffects = updateEnvironmentalEffects(this.environmentalEffects, deltaSeconds);
     this.updateCleanupSystems(deltaSeconds);
     const areaUpdate = applyAreaEffectsToNPCs(
@@ -411,7 +429,7 @@ export class GameScene extends Phaser.Scene {
       this.chargeState,
       input.throw,
       deltaSeconds,
-      canUseSelectedPoop(this.poopInventory),
+      canUseSelectedPoop(this.poopInventory) && this.counterattackState.throwLockSeconds <= 0,
       THROW_CHARGE_CONFIG
     );
     this.chargeState = chargeUpdate.state;
@@ -432,7 +450,7 @@ export class GameScene extends Phaser.Scene {
       this.projectileSystem.getActualLandingError()
     );
 
-    if (chargeUpdate.releasedThrowPower !== undefined && canUseSelectedPoop(this.poopInventory)) {
+    if (chargeUpdate.releasedThrowPower !== undefined && canUseSelectedPoop(this.poopInventory) && this.counterattackState.throwLockSeconds <= 0) {
       this.alertState = recordThrow(this.alertState, ALERT_RULES);
       if (this.stopFrameIfCaught()) {
         return;
@@ -491,6 +509,14 @@ export class GameScene extends Phaser.Scene {
       this.applyGameplayEventsToAlert(hitResult.events);
       this.applyGameplayEventsToScore(hitResult.events);
       this.renderInteractionFeedback(hitResult.events);
+      const counterRules = this.levelDefinition.counterattack;
+      if (counterRules) {
+        for (const event of hitResult.events) {
+          if (event.type === GameplayEventTypes.ProjectileHit && event.npcType === 'angry_pedestrian') {
+            this.counterattackState = registerAngryHit(this.counterattackState, event.token, event.npcId, counterRules);
+          }
+        }
+      }
       const splashHitsByProjectile = new Map<number, number>();
       for (const event of hitResult.events) {
         if (event.type === GameplayEventTypes.ProjectileHit && event.poopType === 'splash_poop') {
@@ -737,6 +763,40 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private updateCounterattackRuntime(deltaSeconds: number): void {
+    const baseRules = this.levelDefinition.counterattack;
+    if (!baseRules) return;
+    const climax = activeEventForChannel(this.levelDefinition, this.levelSession!, 'hazardChannel')?.counterattack;
+    const rules = climax ? {
+      ...baseRules,
+      globalMinimumGapSeconds: baseRules.globalMinimumGapSeconds * climax.globalGapMultiplier,
+      maxConcurrentTelegraphs: baseRules.maxConcurrentTelegraphs + climax.maxConcurrentTelegraphsBonus
+    } : baseRules;
+    const update = updateCounterattacks(this.counterattackState, {
+      deltaSeconds,
+      playerX: this.playerState.x,
+      targetY: this.playerY(),
+      movementBounds: this.layout.rooftop,
+      sources: this.npcSpawnerState.npcs
+        .filter((npc) => npc.definitionId === 'angry_pedestrian' && npc.state !== 'Exiting')
+        .map((npc) => ({ id: npc.id, x: npc.x, y: npc.y }))
+    }, rules);
+    this.counterattackState = update.state;
+    for (const result of update.results) {
+      if (result.outcome === 'hit') {
+        this.alertState = applyAlertDelta(this.alertState, rules.alertPenalty, 'npc_danger', ALERT_RULES);
+      }
+    }
+    this.levelSession = updateLevelMetrics(this.levelSession!, {
+      counterattacksTelegraphed: update.state.stats.telegraphed,
+      counterattacksFired: update.state.stats.fired,
+      counterattacksDodged: update.state.stats.dodged,
+      counterattacksHitPlayer: update.state.stats.hitPlayer,
+      maxConcurrentCounterattacksObserved: update.state.stats.maxConcurrentObserved
+    });
+    this.counterattackSystem?.sync(this.counterattackState);
+  }
+
   private syncZoneViews(): void {
     const activeIds = new Set(this.environmentalEffects.zones.map((zone) => zone.id));
     for (const [id, view] of this.zoneViews.entries()) {
@@ -768,6 +828,7 @@ export class GameScene extends Phaser.Scene {
     this.renderRooftop(layout);
     this.renderWeather(layout);
     this.renderCleanupDayDecorations(layout);
+    this.renderResidentialAlleyDecorations(layout);
     this.renderBounceSurfaces();
     this.renderDebugOverlay(layout);
   }
@@ -793,6 +854,19 @@ export class GameScene extends Phaser.Scene {
     for (const x of [115, layout.width - 115]) {
       this.add.rectangle(x, layout.lanes[1].y, 42, 58, 0x166534, 0.9).setDepth(depth);
       this.add.text(x, layout.lanes[1].y, 'BIN', { fontFamily: 'monospace', fontSize: '12px', color: '#dcfce7' })
+        .setOrigin(0.5).setDepth(depth + 1);
+    }
+  }
+
+  private renderResidentialAlleyDecorations(layout: WorldLayout): void {
+    if (this.levelDefinition.visual.profile !== 'residential_alley') return;
+    const depth = Depths.alleyBack + 12;
+    this.add.text(layout.width / 2, layout.zones[0].height + 18, '巷口注意投擲物  WATCH OUT', {
+      fontFamily: 'monospace', fontSize: '20px', color: '#fee2e2', backgroundColor: '#7f1d1d', padding: { x: 14, y: 6 }
+    }).setOrigin(0.5, 0).setDepth(depth);
+    for (const x of [145, layout.width - 145]) {
+      this.add.rectangle(x, layout.lanes[1].y, 52, 46, 0x334155, 0.9).setDepth(depth);
+      this.add.text(x, layout.lanes[1].y, '巷口', { fontFamily: 'sans-serif', fontSize: '14px', color: '#f8fafc' })
         .setOrigin(0.5).setDepth(depth + 1);
     }
   }
@@ -1098,6 +1172,8 @@ export class GameScene extends Phaser.Scene {
     window.__SHIMING_BIDA_DEBUG__.poopInventory = this.poopInventory;
     window.__SHIMING_BIDA_DEBUG__.environmentalEffects = this.environmentalEffects;
     window.__SHIMING_BIDA_DEBUG__.cleanerSystem = this.cleanerState;
+    window.__SHIMING_BIDA_DEBUG__.counterattackState = this.counterattackState;
+    window.__SHIMING_BIDA_DEBUG__.counterattackViewPool = this.counterattackSystem?.stats();
     window.__SHIMING_BIDA_DEBUG__.isGameOver = this.isGameOver;
     window.__SHIMING_BIDA_DEBUG__.isPlayerInCover = this.isPlayerInCover();
     window.__SHIMING_BIDA_DEBUG__.projectileSystem = this.projectileSystem.snapshot();
@@ -1166,6 +1242,16 @@ export class GameScene extends Phaser.Scene {
         npcs: this.npcSpawnerState.npcs.map((npc) => npc.id === npcId ? { ...npc, x } : npc)
       };
     };
+    window.__SHIMING_BIDA_DEBUG__.primeCounterattackSandbox = (npcIds: readonly number[]) => {
+      const rules = this.levelDefinition.counterattack;
+      if (!rules) return;
+      for (const npcId of [...npcIds].sort((left, right) => left - right)) {
+        for (let hit = 0; hit < rules.hitThreshold; hit += 1) {
+          const eventId = `sandbox:${this.levelSession?.id}:${npcId}:${this.counterattackState.processedHitEventIds.length}`;
+          this.counterattackState = registerAngryHit(this.counterattackState, eventId, npcId, rules);
+        }
+      }
+    };
   }
 
   private clearDebugState(): void {
@@ -1187,6 +1273,8 @@ export class GameScene extends Phaser.Scene {
     delete debug.poopInventory;
     delete debug.environmentalEffects;
     delete debug.cleanerSystem;
+    delete debug.counterattackState;
+    delete debug.counterattackViewPool;
     delete debug.isGameOver;
     delete debug.isPlayerInCover;
     delete debug.projectileSystem;
@@ -1209,6 +1297,7 @@ export class GameScene extends Phaser.Scene {
     delete debug.advanceLevelTime;
     delete debug.spawnNPCSandbox;
     delete debug.setPlayerX;
+    delete debug.primeCounterattackSandbox;
     delete debug.setNPCX;
     delete debug.clearNPCSandbox;
   }

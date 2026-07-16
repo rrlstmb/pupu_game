@@ -17,6 +17,8 @@ import type { GameConfig } from './runtime/GameConfig';
 import type { LevelSession } from './domain/level/LevelDirector';
 import type { WindState } from './domain/wind/WindSystem';
 import type { CleanerSystemState } from './domain/poop/CleanerSystem';
+import type { CounterattackState } from './domain/counterattack/CounterattackSystem';
+import type { CounterattackViewStats } from './systems/counterattack/PhaserCounterattackSystem';
 
 declare global {
   interface Window {
@@ -41,6 +43,8 @@ declare global {
       poopInventory?: PoopInventoryState;
       environmentalEffects?: EnvironmentalEffectState;
       cleanerSystem?: CleanerSystemState;
+      counterattackState?: CounterattackState;
+      counterattackViewPool?: CounterattackViewStats;
       isGameOver?: boolean;
       isPlayerInCover?: boolean;
       hudScoreText?: string;
@@ -91,6 +95,7 @@ declare global {
       setPlayerX?: (x: number) => void;
       setNPCX?: (npcId: number, x: number) => void;
       clearNPCSandbox?: (disableAutoSpawn?: boolean) => void;
+      primeCounterattackSandbox?: (npcIds: readonly number[]) => void;
     };
   }
 }

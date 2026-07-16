@@ -226,6 +226,14 @@ Depth constants live in `src/domain/layout/Depth.ts`.
 - Timed events declare a channel, priority, and merge strategy. Cross-channel events coexist; same-channel selection uses priority then authored order.
 - Bounce surfaces are level data. `ProjectileSystem` owns bounce count and surface identity; scenes only render the authored placeholder bounds.
 
+## Counterattack Hazards
+
+- `src/domain/counterattack/CounterattackSystem.ts` owns retaliation hit-token dedupe, anger thresholds, source queue, target snapshots, telegraph/flight timing, hit/miss results, temporary player penalties, and metrics.
+- Counterattack target X is immutable after telegraph scheduling. Phaser presentation reads the same target half-width as collision and cannot retarget a flying instance.
+- Scheduling is bounded by queue, telegraph, projectile, global-gap, per-source, pool, and minimum-escape-width rules from `LevelDefinition`.
+- `PhaserCounterattackSystem` pools warning/projectile views and contains no hit, Alert, star, or scheduling rules.
+- Pause stops the domain clock because GameScene returns before hazard updates. Retry and shutdown reconstruct/destroy domain instances, queue, penalties, metrics, and pooled views.
+
 - Score calculation lives in pure domain code under `src/domain/score`.
 - Score rules live in `src/data/scoreRules.ts` and include base scores, precision grades, combo thresholds, repeat-hit multipliers, miss penalty, and default phase multipliers.
 - The Phase 07 formula is base score x poop adaptation x combo multiplier x precision multiplier x risk multiplier x repeat-hit multiplier + special event score.
