@@ -96,6 +96,7 @@ declare global {
         readonly selectedNpcIds: readonly number[];
       };
       inputListenerCount?: number;
+      sceneTimerCount?: number;
       debugOverlayVisible?: boolean;
       levelSession?: LevelSession;
       advanceLevelTime?: (seconds: number) => void;

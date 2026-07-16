@@ -13,9 +13,9 @@ Codex must not set any phase to `PASS`.
 
 ## Current Audit
 
-- Audit: Prompt 20 - Level 9 Security Patrol
-- Status: PASS (user-provided prerequisite)
-- Evidence: `docs/evidence/PHASE_20.md`
+- Audit: Gate D - Ten-level Campaign Integration and Content Lock
+- Status: GATE_D_READY_FOR_REVIEW
+- Evidence: `docs/evidence/GATE_D.md`
 - Prompt 22 remains `NOT_STARTED`.
 
 ## Audit History
@@ -30,6 +30,7 @@ Codex must not set any phase to `PASS`.
 - Prompt 04/06 Landing Hit Window Targeted Patch: `READY_FOR_REVIEW` on 2026-07-15; evidence at `docs/evidence/PHASE_06_LANDING_HIT_WINDOW_FIX.md`.
 - Prompt 04 Vertical Charge Meter and Ground Shadow Targeted Patch: `READY_FOR_REVIEW` on 2026-07-15; evidence at `docs/evidence/PHASE_04_VERTICAL_METER_SHADOW_FIX.md`.
 - Prompt 13 Regression - Level 2 After-work Rush: `READY_FOR_REVIEW` on 2026-07-15; evidence at `docs/evidence/PROMPT_13_REGRESSION.md`.
+- Gate D - Ten-level Campaign Integration and Content Lock: `GATE_D_READY_FOR_REVIEW` on 2026-07-17; evidence at `docs/evidence/GATE_D.md`.
 
 ## Baseline
 

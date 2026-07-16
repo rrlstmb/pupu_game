@@ -4,15 +4,7 @@ import { type AlertState, createAlertState } from '../domain/alert/AlertSystem';
 import { type PoopInventoryState, createPoopInventory, selectedSlot } from '../domain/poop/PoopInventory';
 import { type ScoreState, createScoreState } from '../domain/score/ScoreCalculator';
 import type { LevelSession } from '../domain/level/LevelDirector';
-import { LEVEL_02 } from '../data/levels/level02';
-import { LEVEL_03 } from '../data/levels/level03';
-import { LEVEL_04 } from '../data/levels/level04';
-import { LEVEL_05 } from '../data/levels/level05';
-import { LEVEL_06 } from '../data/levels/level06';
-import { LEVEL_07 } from '../data/levels/level07';
-import { LEVEL_08 } from '../data/levels/level08';
-import { LEVEL_09 } from '../data/levels/level09';
-import { LEVEL_10 } from '../data/levels/level10';
+import { isFinalCampaignLevel, nextCampaignLevel } from '../data/campaign';
 import { eventBus } from '../runtime/EventBus';
 import { GAME_CONFIG } from '../runtime/GameConfig';
 import { GameEvents } from '../runtime/GameEvents';
@@ -260,28 +252,22 @@ export class HUDScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     retry.setData('role', 'retry-level');
-    const nextLevel = session.definition.id === 'level_01'
-      ? LEVEL_02
-      : session.definition.id === 'level_02' ? LEVEL_03
-        : session.definition.id === 'level_03' ? LEVEL_04
-          : session.definition.id === 'level_04' ? LEVEL_05
-            : session.definition.id === 'level_05' ? LEVEL_06
-              : session.definition.id === 'level_06' ? LEVEL_07
-                : session.definition.id === 'level_07' ? LEVEL_08
-                  : session.definition.id === 'level_08' ? LEVEL_09
-                    : session.definition.id === 'level_09' ? LEVEL_10 : undefined;
-    const hasNextLevel = nextLevel !== undefined;
+    const nextLevel = nextCampaignLevel(session.definition.id)?.definition;
+    const hasNextLevel = Boolean(nextLevel);
+    const campaignComplete = result.outcome === 'success' && isFinalCampaignLevel(session.definition.id);
+    const terminalLabel = campaignComplete ? 'Campaign 完成' : '重試本關';
     const next = this.add
-      .text(GAME_CONFIG.width / 2 + 110, 590, '下一關', {
+      .text(GAME_CONFIG.width / 2 + 110, 590, hasNextLevel ? '下一關' : terminalLabel, {
         fontFamily: 'sans-serif', fontSize: '24px', color: hasNextLevel ? '#111827' : '#9ca3af',
         backgroundColor: hasNextLevel ? '#f6bd60' : '#374151', padding: { x: 22, y: 11 }
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true })
-      .setData('role', hasNextLevel ? 'next-level' : 'next-level-placeholder');
-    const nextStatus = this.add.text(GAME_CONFIG.width / 2, 645, '下一關尚未開放', {
+      .setData('role', hasNextLevel ? 'next-level' : campaignComplete ? 'campaign-complete' : 'terminal-level');
+    const terminalStatus = campaignComplete ? '十關 Campaign 完成' : '重試或返回主選單';
+    const nextStatus = this.add.text(GAME_CONFIG.width / 2, 645, terminalStatus, {
       fontFamily: 'monospace', fontSize: '17px', color: '#9ca3af'
-    }).setOrigin(0.5).setVisible(false);
+    }).setOrigin(0.5).setVisible(!hasNextLevel);
 
     retry.on(Phaser.Input.Events.POINTER_UP, () => {
       this.scene.get(SceneKeys.Game).scene.restart({ levelDefinition: session.definition });
@@ -289,14 +275,12 @@ export class HUDScene extends Phaser.Scene {
     next.on(Phaser.Input.Events.POINTER_UP, () => {
       if (hasNextLevel) {
         this.scene.get(SceneKeys.Game).scene.restart({ levelDefinition: nextLevel });
-      } else {
-        nextStatus.setVisible(true);
       }
     });
     overlay.add([panel, title, summary, stars, retry, next, nextStatus]);
     this.failureOverlay = overlay;
     if (window.__SHIMING_BIDA_DEBUG__) {
-      window.__SHIMING_BIDA_DEBUG__.hudResultText = `${title.text}\n${summary.text}\n${stars.text}`;
+      window.__SHIMING_BIDA_DEBUG__.hudResultText = `${title.text}\n${summary.text}\n${stars.text}\n${hasNextLevel ? '' : terminalStatus}`;
     }
   }
 }

@@ -1552,6 +1552,8 @@ export class GameScene extends Phaser.Scene {
     window.__SHIMING_BIDA_DEBUG__.chargeMeter = this.chargeMeter.snapshot();
     window.__SHIMING_BIDA_DEBUG__.landingHit = this.lastLandingHitDebug;
     window.__SHIMING_BIDA_DEBUG__.inputListenerCount = this.inputAdapter.getBoundListenerCount();
+    const clock = this.time as unknown as { _active: readonly unknown[]; _pendingInsertion: readonly unknown[] };
+    window.__SHIMING_BIDA_DEBUG__.sceneTimerCount = clock._active.length + clock._pendingInsertion.length;
     window.__SHIMING_BIDA_DEBUG__.debugOverlayVisible = this.debugOverlayVisible;
     window.__SHIMING_BIDA_DEBUG__.levelSession = this.levelSession;
     window.__SHIMING_BIDA_DEBUG__.advanceLevelTime = (seconds: number) => {
@@ -1670,6 +1672,7 @@ export class GameScene extends Phaser.Scene {
     delete debug.chargeMeter;
     delete debug.landingHit;
     delete debug.inputListenerCount;
+    delete debug.sceneTimerCount;
     delete debug.debugOverlayVisible;
     delete debug.levelSession;
     delete debug.advanceLevelTime;

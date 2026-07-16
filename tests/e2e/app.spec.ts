@@ -1500,6 +1500,8 @@ test('phase 21 level 10 completes the three-phase boss through a legal golden la
   expect(completed.metrics.finalGoldenHits).toBe(1);
   expect((await bossState(page)).completionCount).toBe(1);
   await expect.poll(() => hudResultText(page)).toContain('任務成功');
+  await expect.poll(() => hudResultText(page)).toContain('十關 Campaign 完成');
+  await page.screenshot({ path: 'docs/evidence/gate-d-campaign-complete.png', fullPage: true });
   await page.screenshot({ path: 'docs/evidence/phase-21-final-golden-hit.png', fullPage: true });
   expect(consoleErrors).toEqual([]);
 });

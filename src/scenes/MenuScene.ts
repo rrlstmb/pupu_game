@@ -1,14 +1,5 @@
 import Phaser from 'phaser';
-import { LEVEL_01 } from '../data/levels/level01';
-import { LEVEL_02 } from '../data/levels/level02';
-import { LEVEL_03 } from '../data/levels/level03';
-import { LEVEL_04 } from '../data/levels/level04';
-import { LEVEL_05 } from '../data/levels/level05';
-import { LEVEL_06 } from '../data/levels/level06';
-import { LEVEL_07 } from '../data/levels/level07';
-import { LEVEL_08 } from '../data/levels/level08';
-import { LEVEL_09 } from '../data/levels/level09';
-import { LEVEL_10 } from '../data/levels/level10';
+import { CAMPAIGN_LEVELS } from '../data/campaign';
 import type { LevelDefinition } from '../domain/level/LevelDefinition';
 import { eventBus } from '../runtime/EventBus';
 import { GameEvents } from '../runtime/GameEvents';
@@ -40,16 +31,13 @@ export class MenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    const startButton = this.createLevelButton(GAME_CONFIG.width / 2, 390, '第 1 關：準時上班', LEVEL_01, 'start-game');
-    const levelTwoButton = this.createLevelButton(GAME_CONFIG.width / 2, 475, '第 2 關：下班尖峰', LEVEL_02, 'start-level-02');
-    const levelThreeButton = this.createLevelButton(GAME_CONFIG.width / 2, 560, '第 3 關：雨傘防線', LEVEL_03, 'start-level-03');
-    const levelFourButton = this.createLevelButton(GAME_CONFIG.width / 2, 645, '第 4 關：市場散場', LEVEL_04, 'start-level-04');
-    const levelFiveButton = this.createLevelButton(1040, 645, '第 5 關：逆風投遞', LEVEL_05, 'start-level-05');
-    const levelSixButton = this.createLevelButton(240, 645, '第 6 關：清潔大作戰', LEVEL_06, 'start-level-06');
-    const levelSevenButton = this.createLevelButton(1040, 560, '第 7 關：巷口反擊', LEVEL_07, 'start-level-07');
-    const levelEightButton = this.createLevelButton(240, 560, '第 8 關：全城直播', LEVEL_08, 'start-level-08');
-    const levelNineButton = this.createLevelButton(240, 475, '第 9 關：保全巡邏', LEVEL_09, 'start-level-09');
-    const levelTenButton = this.createLevelButton(1040, 475, '第 10 關：城市潔淨日', LEVEL_10, 'start-level-10');
+    const levelButtons = CAMPAIGN_LEVELS.map((level) => this.createLevelButton(
+      level.menuPosition.x,
+      level.menuPosition.y,
+      level.definition.name,
+      level.definition,
+      level.menuRole
+    ));
 
     this.add
       .text(GAME_CONFIG.width / 2, 320, '選擇關卡', {
@@ -60,28 +48,10 @@ export class MenuScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     registerSceneDisposer(this, () => {
-      startButton.removeAllListeners();
-      levelTwoButton.removeAllListeners();
-      levelThreeButton.removeAllListeners();
-      levelFourButton.removeAllListeners();
-      levelFiveButton.removeAllListeners();
-      levelSixButton.removeAllListeners();
-      levelSevenButton.removeAllListeners();
-      levelEightButton.removeAllListeners();
-      levelNineButton.removeAllListeners();
-      levelTenButton.removeAllListeners();
+      levelButtons.forEach((button) => button.removeAllListeners());
       title.destroy();
       subtitle.destroy();
-      startButton.destroy();
-      levelTwoButton.destroy();
-      levelThreeButton.destroy();
-      levelFourButton.destroy();
-      levelFiveButton.destroy();
-      levelSixButton.destroy();
-      levelSevenButton.destroy();
-      levelEightButton.destroy();
-      levelNineButton.destroy();
-      levelTenButton.destroy();
+      levelButtons.forEach((button) => button.destroy());
       emitSceneShutdown(this);
     });
   }
