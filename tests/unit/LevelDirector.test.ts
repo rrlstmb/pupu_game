@@ -82,7 +82,11 @@ describe('LevelDirector', () => {
       counterattacksHitPlayer: 0, maxConcurrentCounterattacksObserved: 0,
       cameraTelegraphsStarted: 0, snapshotsActivated: 0, snapshotsAvoided: 0, snapshotCaptures: 0,
       recordingWindowsStarted: 0, recordingWindowsSurvived: 0, recordingCaptures: 0,
-      maximumExposureReached: 0, capturesDuringThrow: 0, capturesDuringClimax: 0
+      maximumExposureReached: 0, capturesDuringThrow: 0, capturesDuringClimax: 0,
+      guardObservationsStarted: 0, guardObservationsAvoided: 0, searchlightWindowsSurvived: 0,
+      securityDetections: 0, detectionsWhileExposed: 0, throwsWhileConcealed: 0,
+      goldenPoopUsed: 0, goldenPoopHits: 0, goldenPoopScore: 0, goldenPoopRemaining: 0,
+      scoreAfterBlockade: 0, blockadeTriggered: 0, maximumSecurityDetectionProgress: 0
     });
     expect(reset.result).toBeUndefined();
     expect(reset.remainingSeconds).toBe(90);

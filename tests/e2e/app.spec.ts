@@ -987,7 +987,11 @@ test('phase 12 runs Level 1 through pause, timeout result, and deterministic cle
     counterattacksHitPlayer: 0, maxConcurrentCounterattacksObserved: 0,
     cameraTelegraphsStarted: 0, snapshotsActivated: 0, snapshotsAvoided: 0, snapshotCaptures: 0,
     recordingWindowsStarted: 0, recordingWindowsSurvived: 0, recordingCaptures: 0,
-    maximumExposureReached: 0, capturesDuringThrow: 0, capturesDuringClimax: 0
+    maximumExposureReached: 0, capturesDuringThrow: 0, capturesDuringClimax: 0,
+    guardObservationsStarted: 0, guardObservationsAvoided: 0, searchlightWindowsSurvived: 0,
+    securityDetections: 0, detectionsWhileExposed: 0, throwsWhileConcealed: 0,
+    goldenPoopUsed: 0, goldenPoopHits: 0, goldenPoopScore: 0, goldenPoopRemaining: 0,
+    scoreAfterBlockade: 0, blockadeTriggered: 0, maximumSecurityDetectionProgress: 0
   });
   expect((await npcSpawner(page)).npcs).toHaveLength(0);
   expect((await projectileSystem(page)).projectiles).toHaveLength(0);
@@ -1365,6 +1369,73 @@ test('phase 19 level 8 separates snapshot and recording surveillance with safe r
   expect(consoleErrors).toEqual([]);
 });
 
+test('phase 20 level 9 combines security cover, throw exposure, golden stock, and safe blockade', async ({ page }) => {
+  test.setTimeout(75_000);
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+  page.on('pageerror', (error) => consoleErrors.push(error.message));
+  await page.goto('/');
+  await expect(page.locator('canvas')).toHaveAttribute('data-game-ready', 'true');
+  const box = await page.locator('canvas').boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(box!.x + box!.width * (240 / 1280), box!.y + box!.height * (475 / 720));
+  await expect.poll(() => activeScenes(page)).toContain('GameScene');
+  await startLevelForTest(page);
+  expect((await levelSession(page)).definition.id).toBe('level_09');
+  expect(await poopStock(page, 'golden_poop')).toBe(1);
+
+  await page.evaluate(() => {
+    const debug = window.__SHIMING_BIDA_DEBUG__;
+    debug?.clearNPCSandbox?.(true);
+    debug?.spawnNPCSandbox?.('security_guard', 980, 'mid_sidewalk');
+  });
+  await expect.poll(async () => (await securityState(page)).instances.some((item) => item.state === 'observing'), { timeout: 8_000 }).toBe(true);
+  let security = await securityState(page);
+  const observing = security.instances.find((item) => item.state === 'observing')!;
+  await page.evaluate((x) => window.__SHIMING_BIDA_DEBUG__?.setPlayerX?.(x), observing.zone.centerX);
+  await expect.poll(async () => Math.max(...(await securityState(page)).instances.map((item) => item.detectionProgress)), { timeout: 4_000 }).toBeGreaterThan(0.08);
+
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.setPlayerX?.(250));
+  const progressBeforeCover = Math.max(...(await securityState(page)).instances.map((item) => item.detectionProgress));
+  await page.waitForTimeout(450);
+  expect(Math.max(...(await securityState(page)).instances.map((item) => item.detectionProgress))).toBeLessThan(progressBeforeCover);
+  await chargeThrow(page, 0.05);
+  await expect.poll(async () => (await securityState(page)).throwExposureSeconds).toBeGreaterThan(0);
+
+  await page.keyboard.press('KeyE');
+  await page.keyboard.press('KeyE');
+  await expect.poll(async () => (await poopInventory(page)).selectedPoopType).toBe('golden_poop');
+  const usedBefore = (await levelSession(page)).metrics.goldenPoopUsed ?? 0;
+  await fireAtHittableNPCAndWaitForRant(page);
+  await expect.poll(async () => (await levelSession(page)).metrics.goldenPoopHits ?? 0).toBe(1);
+  expect((await levelSession(page)).metrics.goldenPoopUsed).toBe(usedBefore + 1);
+  expect(await poopStock(page, 'golden_poop')).toBe(0);
+
+  const session = await levelSession(page);
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.setPlayerX?.(1000));
+  await advanceLevelTime(page, session.remainingSeconds - 35);
+  await expect.poll(async () => (await securityState(page)).blockade.phase).toBe('warning');
+  await expect.poll(async () => (await securityState(page)).blockade.phase, { timeout: 5_000 }).toBe('active');
+  security = await securityState(page);
+  const player = await playerState(page);
+  expect(security.blockade.blockedIntervals.some((interval) => player.x >= interval.start && player.x <= interval.end)).toBe(false);
+  expect(security.blockade.blockedIntervals).toEqual([{ start: 900, end: 1178 }]);
+  await page.screenshot({ path: 'docs/evidence/phase-20-security-blockade.png', fullPage: true });
+
+  await page.evaluate(() => {
+    const debug = window.__SHIMING_BIDA_DEBUG__;
+    if (!debug?.levelSession) throw new Error('Missing level session');
+    debug.game.scene.getScene('GameScene').scene.restart({ levelDefinition: debug.levelSession.definition });
+  });
+  await startLevelForTest(page);
+  security = await securityState(page);
+  expect(security).toMatchObject({ throwExposureSeconds: 0, throwLockSeconds: 0, invulnerabilitySeconds: 0 });
+  expect(security.blockade.phase).toBe('inactive');
+  expect(await poopStock(page, 'golden_poop')).toBe(1);
+  expect(await debugOverlayVisible(page)).toBe(false);
+  expect(consoleErrors).toEqual([]);
+});
+
 async function surveillanceState(page: Page): Promise<{
   instances: Array<{ id: string; sourceNpcId: number; mode: string; state: string; exposure: number; targetZone: { centerX: number; halfWidth: number } }>;
   queuedSourceIds: number[];
@@ -1379,6 +1450,26 @@ async function surveillanceState(page: Page): Promise<{
       instances: state.instances.map((item) => ({ ...item, targetZone: { ...item.targetZone } })),
       queuedSourceIds: [...state.queuedSourceIds], throwLockSeconds: state.throwLockSeconds,
       invulnerabilitySeconds: state.invulnerabilitySeconds, stats: { ...state.stats }
+    };
+  });
+}
+
+async function securityState(page: Page): Promise<{
+  instances: Array<{ id: string; sourceId: string; sourceType: string; state: string; detectionProgress: number; zone: { centerX: number; halfWidth: number } }>;
+  throwExposureSeconds: number;
+  throwLockSeconds: number;
+  invulnerabilitySeconds: number;
+  blockade: { phase: string; blockedIntervals: Array<{ start: number; end: number }> };
+}> {
+  return page.evaluate(() => {
+    const state = window.__SHIMING_BIDA_DEBUG__?.securityState;
+    if (!state) throw new Error('Security debug state is unavailable');
+    return {
+      instances: state.instances.map((item) => ({ ...item, zone: { ...item.zone } })),
+      throwExposureSeconds: state.throwExposureSeconds,
+      throwLockSeconds: state.throwLockSeconds,
+      invulnerabilitySeconds: state.invulnerabilitySeconds,
+      blockade: { phase: state.blockade.phase, blockedIntervals: state.blockade.blockedIntervals.map((item) => ({ ...item })) }
     };
   });
 }
@@ -1852,6 +1943,11 @@ async function poopInventory(page: Page): Promise<{
       cooldownRemainingSeconds: slot.cooldownRemainingSeconds
     };
   });
+}
+
+async function poopStock(page: Page, poopType: string): Promise<number | 'infinite' | undefined> {
+  return page.evaluate((type) => window.__SHIMING_BIDA_DEBUG__?.poopInventory?.slots
+    .find((slot) => slot.poopType === type)?.stock, poopType);
 }
 
 async function environmentalEffects(page: Page): Promise<{

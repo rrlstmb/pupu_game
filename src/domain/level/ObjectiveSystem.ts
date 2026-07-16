@@ -26,6 +26,19 @@ export type LevelMetrics = {
   readonly maximumExposureReached?: number;
   readonly capturesDuringThrow?: number;
   readonly capturesDuringClimax?: number;
+  readonly guardObservationsStarted?: number;
+  readonly guardObservationsAvoided?: number;
+  readonly searchlightWindowsSurvived?: number;
+  readonly securityDetections?: number;
+  readonly detectionsWhileExposed?: number;
+  readonly throwsWhileConcealed?: number;
+  readonly goldenPoopUsed?: number;
+  readonly goldenPoopHits?: number;
+  readonly goldenPoopScore?: number;
+  readonly goldenPoopRemaining?: number;
+  readonly scoreAfterBlockade?: number;
+  readonly blockadeTriggered?: number;
+  readonly maximumSecurityDetectionProgress?: number;
 };
 
 export type ObjectiveState = {

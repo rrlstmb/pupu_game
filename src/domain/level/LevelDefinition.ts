@@ -13,7 +13,7 @@ export type LevelSpawnDefinition = {
 };
 
 export type LevelVisualDefinition = {
-  readonly profile: 'day' | 'evening' | 'rainy' | 'market_evening' | 'windy_afternoon' | 'cleanup_day' | 'residential_alley' | 'live_event';
+  readonly profile: 'day' | 'evening' | 'rainy' | 'market_evening' | 'windy_afternoon' | 'cleanup_day' | 'residential_alley' | 'live_event' | 'night_patrol';
   readonly skylineColor: number;
   readonly alleyColor: number;
   readonly rooftopColor: number;
@@ -53,7 +53,66 @@ export type BounceSurfaceDefinition = {
   readonly bounceCoefficient: number;
 };
 
-export type EventChannel = 'spawnChannel' | 'windChannel' | 'presentationChannel' | 'hazardChannel' | 'cleanupChannel' | 'surveillanceChannel';
+export type EventChannel = 'spawnChannel' | 'windChannel' | 'presentationChannel' | 'hazardChannel' | 'cleanupChannel' | 'surveillanceChannel' | 'securityChannel' | 'blockadeChannel';
+
+export type SecurityCoverDefinition = {
+  readonly id: string;
+  readonly x: number;
+  readonly width: number;
+  readonly blocksSources: readonly ('guard' | 'searchlight')[];
+  readonly concealmentPadding: number;
+  readonly disabledDuringBlockade: boolean;
+};
+
+export type SearchlightDefinition = {
+  readonly id: string;
+  readonly minX: number;
+  readonly maxX: number;
+  readonly beamHalfWidth: number;
+  readonly sweepDurationSeconds: number;
+  readonly warningDurationSeconds: number;
+  readonly phaseOffset: number;
+  readonly detectionMultiplier: number;
+};
+
+export type SecurityDefinition = {
+  readonly detectionRatePerSecond: number;
+  readonly detectionDecayPerSecond: number;
+  readonly detectionThreshold: number;
+  readonly guardPatrolPoints: readonly number[];
+  readonly guardWarningSeconds: number;
+  readonly guardObservationSeconds: number;
+  readonly guardCooldownSeconds: number;
+  readonly guardViewHalfWidth: number;
+  readonly guardHitAlertPenalty: number;
+  readonly searchlights: readonly SearchlightDefinition[];
+  readonly covers: readonly SecurityCoverDefinition[];
+  readonly exposeOnCharge: boolean;
+  readonly exposeOnThrow: boolean;
+  readonly chargeExposureMultiplier: number;
+  readonly throwExposureSeconds: number;
+  readonly coverEffectivenessWhileExposed: number;
+  readonly exposedDetectionMultiplier: number;
+  readonly spottedAlertPenalty: number;
+  readonly spottedThrowLockSeconds: number;
+  readonly spottedInvulnerabilitySeconds: number;
+  readonly maxConcurrentGuardViews: number;
+  readonly maxConcurrentSearchlights: number;
+  readonly globalSecurityGapSeconds: number;
+  readonly minimumSafeWidth: number;
+  readonly queueLimit: number;
+  readonly viewPoolSize: number;
+};
+
+export type BlockadeDefinition = {
+  readonly id: string;
+  readonly warningDurationSeconds: number;
+  readonly blockedIntervals: readonly { readonly start: number; readonly end: number }[];
+  readonly minimumReachableWidth: number;
+  readonly minimumThrowPositionWidth: number;
+  readonly requireCoverInRemainingArea: boolean;
+  readonly playerRelocationPolicy: 'nearest_safe_point';
+};
 
 export type SurveillanceModeDefinition = {
   readonly telegraphDurationSeconds: number;
@@ -98,6 +157,9 @@ export type SurveillanceEventDefinition = {
   readonly globalGapMultiplier: number;
   readonly maxConcurrentTelegraphsBonus: number;
 };
+
+export type SecurityEventDefinition = { readonly detectionRateMultiplier: number };
+export type BlockadeEventDefinition = { readonly activate: true };
 
 export type CleanerRules = {
   readonly detectionRadius: number;
@@ -156,6 +218,8 @@ export type LevelTimedEvent = {
   readonly cleanup?: CleanupEventDefinition;
   readonly counterattack?: CounterattackEventDefinition;
   readonly surveillance?: SurveillanceEventDefinition;
+  readonly security?: SecurityEventDefinition;
+  readonly blockade?: BlockadeEventDefinition;
 };
 
 export type LevelStarCondition =
@@ -168,7 +232,9 @@ export type LevelStarCondition =
   | { readonly id: 'area_zone_target'; readonly label: string; readonly mode: 'cumulative' | 'single_zone'; readonly targetCount: number }
   | { readonly id: 'counter_dodge_target'; readonly label: string; readonly targetCount: number }
   | { readonly id: 'snapshot_avoid_target'; readonly label: string; readonly targetCount: number }
-  | { readonly id: 'recording_survive_target'; readonly label: string; readonly targetCount: number };
+  | { readonly id: 'recording_survive_target'; readonly label: string; readonly targetCount: number }
+  | { readonly id: 'security_avoid_target'; readonly label: string; readonly targetCount: number }
+  | { readonly id: 'golden_hit_target'; readonly label: string; readonly targetCount: number };
 
 export type LevelDefinition = {
   readonly id: string;
@@ -188,6 +254,9 @@ export type LevelDefinition = {
   readonly cleaner?: CleanerRules;
   readonly counterattack?: CounterattackDefinition;
   readonly surveillance?: SurveillanceDefinition;
+  readonly security?: SecurityDefinition;
+  readonly blockade?: BlockadeDefinition;
+  readonly poopStockOverrides?: Readonly<Partial<Record<PoopType, number | 'infinite'>>>;
   readonly stars: readonly LevelStarCondition[];
 };
 
@@ -235,11 +304,28 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
   validateCleaner(input.cleaner, errors);
   validateCounterattack(input.counterattack, errors);
   validateSurveillance(input.surveillance, errors);
+  validateSecurity(input.security, errors);
+  validateBlockade(input.blockade, errors);
+  validatePoopStockOverrides(input.poopStockOverrides, input.availablePoopTypes, errors);
   validateStars(input.stars, errors);
   validateScoreTargetConsistency(input, errors);
   return errors.length > 0
     ? { valid: false, errors }
     : { valid: true, definition: input as LevelDefinition };
+}
+
+function validatePoopStockOverrides(input: unknown, availablePoopTypes: unknown, errors: string[]): void {
+  if (input === undefined) return;
+  if (!isRecord(input) || !Array.isArray(availablePoopTypes)) {
+    errors.push('poopStockOverrides must be an object for available poop types');
+    return;
+  }
+  for (const [poopType, stock] of Object.entries(input)) {
+    if (!POOP_TYPES.includes(poopType as PoopType) || !availablePoopTypes.includes(poopType) ||
+      (stock !== 'infinite' && (!Number.isInteger(stock) || Number(stock) < 0))) {
+      errors.push(`poopStockOverrides.${poopType} must be a non-negative integer or infinite for an available poop type`);
+    }
+  }
 }
 
 function validateScoreTargetConsistency(input: Record<string, unknown>, errors: string[]): void {
@@ -284,7 +370,7 @@ function validateStars(input: unknown, errors: string[]): void {
   }
   const ids = input.filter(isRecord).map((condition) => condition.id);
   const allowedIds: readonly LevelStarCondition['id'][] = [
-    'score_target', 'combo_target', 'accuracy_target', 'npc_hit_target', 'interaction_target', 'splash_multi_hit_target', 'area_zone_target', 'counter_dodge_target', 'snapshot_avoid_target', 'recording_survive_target'
+    'score_target', 'combo_target', 'accuracy_target', 'npc_hit_target', 'interaction_target', 'splash_multi_hit_target', 'area_zone_target', 'counter_dodge_target', 'snapshot_avoid_target', 'recording_survive_target', 'security_avoid_target', 'golden_hit_target'
   ];
   if (new Set(ids).size !== 3 || !ids.includes('score_target') || ids.some((id) => !allowedIds.includes(id as LevelStarCondition['id']))) {
     errors.push('stars must define three unique conditions including score_target');
@@ -318,12 +404,14 @@ function validateStars(input: unknown, errors: string[]): void {
       errors.push('counter_dodge_target.targetCount must be a positive integer');
     } else if ((condition.id === 'snapshot_avoid_target' || condition.id === 'recording_survive_target') && !isPositiveInteger(condition.targetCount)) {
       errors.push(`${condition.id}.targetCount must be a positive integer`);
+    } else if ((condition.id === 'security_avoid_target' || condition.id === 'golden_hit_target') && !isPositiveInteger(condition.targetCount)) {
+      errors.push(`${condition.id}.targetCount must be a positive integer`);
     }
   }
 }
 
 function validateVisual(input: unknown, errors: string[]): void {
-  if (!isRecord(input) || !['day', 'evening', 'rainy', 'market_evening', 'windy_afternoon', 'cleanup_day', 'residential_alley', 'live_event'].includes(String(input.profile))) {
+  if (!isRecord(input) || !['day', 'evening', 'rainy', 'market_evening', 'windy_afternoon', 'cleanup_day', 'residential_alley', 'live_event', 'night_patrol'].includes(String(input.profile))) {
     errors.push('visual must define a supported profile');
     return;
   }
@@ -355,7 +443,7 @@ function validateEvents(input: unknown, duration: unknown, errors: string[]): vo
       event.triggerAtRemainingSeconds < 0 || typeof duration !== 'number' || event.triggerAtRemainingSeconds >= duration) {
       errors.push(`${event.id} must be once and trigger within the level duration`);
     }
-    if (!['spawnChannel', 'windChannel', 'presentationChannel', 'hazardChannel', 'cleanupChannel', 'surveillanceChannel'].includes(String(event.channel)) ||
+    if (!['spawnChannel', 'windChannel', 'presentationChannel', 'hazardChannel', 'cleanupChannel', 'surveillanceChannel', 'securityChannel', 'blockadeChannel'].includes(String(event.channel)) ||
       !['replace', 'merge', 'exclusive'].includes(String(event.mergeStrategy)) || !Number.isInteger(event.priority)) {
       errors.push(`${event.id} must define channel, integer priority, and mergeStrategy`);
     }
@@ -379,6 +467,49 @@ function validateEvents(input: unknown, duration: unknown, errors: string[]): vo
       !Number.isInteger(event.surveillance.maxConcurrentTelegraphsBonus) || event.surveillance.maxConcurrentTelegraphsBonus < 0)) {
       errors.push(`${event.id} surveillance profile must define positive gap multiplier and non-negative telegraph bonus`);
     }
+    if (event.security !== undefined && (!isRecord(event.security) || !isPositiveNumber(event.security.detectionRateMultiplier))) {
+      errors.push(`${event.id} security profile must define a positive detection multiplier`);
+    }
+    if (event.blockade !== undefined && (!isRecord(event.blockade) || event.blockade.activate !== true)) {
+      errors.push(`${event.id} blockade profile must activate the authored blockade`);
+    }
+  }
+}
+
+function validateSecurity(input: unknown, errors: string[]): void {
+  if (input === undefined) return;
+  if (!isRecord(input) || !Array.isArray(input.guardPatrolPoints) || input.guardPatrolPoints.length === 0 ||
+    !Array.isArray(input.searchlights) || input.searchlights.length === 0 || !Array.isArray(input.covers) || input.covers.length === 0) {
+    errors.push('security must define patrol points, searchlights, and covers');
+    return;
+  }
+  const positive = ['detectionRatePerSecond', 'detectionDecayPerSecond', 'detectionThreshold', 'guardWarningSeconds',
+    'guardObservationSeconds', 'guardCooldownSeconds', 'guardViewHalfWidth', 'searchlights', 'chargeExposureMultiplier',
+    'throwExposureSeconds', 'exposedDetectionMultiplier', 'spottedAlertPenalty', 'spottedThrowLockSeconds',
+    'spottedInvulnerabilitySeconds', 'maxConcurrentGuardViews', 'maxConcurrentSearchlights', 'globalSecurityGapSeconds',
+    'minimumSafeWidth', 'queueLimit', 'viewPoolSize'];
+  if (positive.filter((key) => key !== 'searchlights').some((key) => !isPositiveNumber(input[key])) ||
+    typeof input.coverEffectivenessWhileExposed !== 'number' || input.coverEffectivenessWhileExposed < 0 || input.coverEffectivenessWhileExposed > 1 ||
+    typeof input.guardHitAlertPenalty !== 'number' || input.guardHitAlertPenalty < 0 ||
+    input.exposeOnCharge !== true || input.exposeOnThrow !== true ||
+    input.searchlights.some((light) => !isRecord(light) || typeof light.id !== 'string' || !isPositiveNumber(light.beamHalfWidth) ||
+      !isPositiveNumber(light.sweepDurationSeconds) || !isPositiveNumber(light.warningDurationSeconds) ||
+      typeof light.minX !== 'number' || typeof light.maxX !== 'number' || light.maxX <= light.minX ||
+      typeof light.phaseOffset !== 'number' || light.phaseOffset < 0 || light.phaseOffset >= 1) ||
+    input.covers.some((cover) => !isRecord(cover) || typeof cover.id !== 'string' || typeof cover.x !== 'number' ||
+      !isPositiveNumber(cover.width) || !Array.isArray(cover.blocksSources))) {
+    errors.push('security timing, exposure, source bounds, covers, and limits must be valid');
+  }
+}
+
+function validateBlockade(input: unknown, errors: string[]): void {
+  if (input === undefined) return;
+  if (!isRecord(input) || typeof input.id !== 'string' || !isPositiveNumber(input.warningDurationSeconds) ||
+    !Array.isArray(input.blockedIntervals) || input.blockedIntervals.length === 0 ||
+    input.blockedIntervals.some((interval) => !isRecord(interval) || typeof interval.start !== 'number' || typeof interval.end !== 'number' || interval.end <= interval.start) ||
+    !isPositiveNumber(input.minimumReachableWidth) || !isPositiveNumber(input.minimumThrowPositionWidth) ||
+    input.requireCoverInRemainingArea !== true || input.playerRelocationPolicy !== 'nearest_safe_point') {
+    errors.push('blockade must define warning, valid intervals, reachability, cover, and relocation');
   }
 }
 

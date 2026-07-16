@@ -24,6 +24,7 @@ import {
 import { isPlayerInCover } from '../domain/alert/CoverVisibility';
 import { createCounterattackState, registerAngryHit, updateCounterattacks, type CounterattackState } from '../domain/counterattack/CounterattackSystem';
 import { cancelSurveillanceForSource, createSurveillanceState, updateSurveillance, type SurveillanceState } from '../domain/surveillance/SurveillanceSystem';
+import { cancelSecurityForGuard, createSecurityState, getReachableHorizontalIntervals, registerThrowExposure, relocatePlayerFromBlockade, updateSecurity, type SecurityState } from '../domain/security/SecuritySystem';
 import { removeHitTokensForProjectiles, resolveProjectileNPCHits } from '../domain/gameplay/HitDetection';
 import {
   collectNPCStateTransitionEvents,
@@ -104,6 +105,7 @@ import { PhaserChargeMeter } from '../systems/projectile/PhaserChargeMeter';
 import { PhaserWindIndicator } from '../systems/wind/PhaserWindIndicator';
 import { PhaserCounterattackSystem } from '../systems/counterattack/PhaserCounterattackSystem';
 import { PhaserSurveillanceSystem } from '../systems/surveillance/PhaserSurveillanceSystem';
+import { PhaserSecuritySystem } from '../systems/security/PhaserSecuritySystem';
 
 export class GameScene extends Phaser.Scene {
   private levelDefinition: LevelDefinition = LEVEL_01;
@@ -130,6 +132,8 @@ export class GameScene extends Phaser.Scene {
   private counterattackSystem?: PhaserCounterattackSystem;
   private surveillanceState: SurveillanceState = createSurveillanceState();
   private surveillanceSystem?: PhaserSurveillanceSystem;
+  private securityState: SecurityState = createSecurityState();
+  private securitySystem?: PhaserSecuritySystem;
   private projectileConfig: ProjectileConfig = NORMAL_POOP_PROJECTILE_CONFIG;
   private chargeState: ChargeState = createChargeState();
   private lastLandingHitDebug?: {
@@ -171,6 +175,7 @@ export class GameScene extends Phaser.Scene {
     this.cleanerState = createCleanerSystemState();
     this.counterattackState = createCounterattackState();
     this.surveillanceState = createSurveillanceState();
+    this.securityState = createSecurityState();
     this.projectileConfig = NORMAL_POOP_PROJECTILE_CONFIG;
     this.chargeState = createChargeState();
     this.windState = CALM_WIND_STATE;
@@ -196,6 +201,9 @@ export class GameScene extends Phaser.Scene {
       : undefined;
     this.surveillanceSystem = this.levelDefinition.surveillance
       ? new PhaserSurveillanceSystem(this, this.levelDefinition.surveillance, this.playerY() + 34)
+      : undefined;
+    this.securitySystem = this.levelDefinition.security
+      ? new PhaserSecuritySystem(this, this.levelDefinition.security, this.layout.rooftop.y, this.layout.rooftop.height)
       : undefined;
     this.npcSpawnerState = createNPCSpawnerState();
     emitSceneReady(this);
@@ -309,6 +317,8 @@ export class GameScene extends Phaser.Scene {
       this.counterattackSystem = undefined;
       this.surveillanceSystem?.dispose();
       this.surveillanceSystem = undefined;
+      this.securitySystem?.dispose();
+      this.securitySystem = undefined;
       this.npcSystem.dispose();
       this.scrollingLayers.length = 0;
       this.debugOverlay?.destroy(true);
@@ -351,10 +361,13 @@ export class GameScene extends Phaser.Scene {
     const staggerMultiplier = this.counterattackState.staggerSeconds > 0
       ? this.levelDefinition.counterattack?.staggerMovementMultiplier ?? 1
       : 1;
+    const movementBounds = this.securityMovementBounds();
+    const relocatedX = relocatePlayerFromBlockade(this.playerState.x, [{ start: movementBounds.minX, end: movementBounds.maxX }]);
+    if (relocatedX !== this.playerState.x) this.playerState = { ...this.playerState, x: relocatedX, velocityX: 0 };
     this.playerState = updatePlayerMovement(
       this.playerState,
       input,
-      this.layout.rooftop,
+      movementBounds,
       {
         ...PLAYER_MOVEMENT_CONFIG,
         maxSpeed: PLAYER_MOVEMENT_CONFIG.maxSpeed * staggerMultiplier,
@@ -400,6 +413,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.updateCounterattackRuntime(deltaSeconds);
     this.updateSurveillanceRuntime(deltaSeconds, input.throw.held);
+    this.updateSecurityRuntime(deltaSeconds, input.throw.held);
     this.environmentalEffects = updateEnvironmentalEffects(this.environmentalEffects, deltaSeconds);
     this.updateCleanupSystems(deltaSeconds);
     const areaUpdate = applyAreaEffectsToNPCs(
@@ -441,7 +455,7 @@ export class GameScene extends Phaser.Scene {
       this.chargeState,
       input.throw,
       deltaSeconds,
-      canUseSelectedPoop(this.poopInventory) && this.counterattackState.throwLockSeconds <= 0 && this.surveillanceState.throwLockSeconds <= 0,
+      canUseSelectedPoop(this.poopInventory) && this.counterattackState.throwLockSeconds <= 0 && this.surveillanceState.throwLockSeconds <= 0 && this.securityState.throwLockSeconds <= 0,
       THROW_CHARGE_CONFIG
     );
     this.chargeState = chargeUpdate.state;
@@ -462,7 +476,7 @@ export class GameScene extends Phaser.Scene {
       this.projectileSystem.getActualLandingError()
     );
 
-    if (chargeUpdate.releasedThrowPower !== undefined && canUseSelectedPoop(this.poopInventory) && this.counterattackState.throwLockSeconds <= 0 && this.surveillanceState.throwLockSeconds <= 0) {
+    if (chargeUpdate.releasedThrowPower !== undefined && canUseSelectedPoop(this.poopInventory) && this.counterattackState.throwLockSeconds <= 0 && this.surveillanceState.throwLockSeconds <= 0 && this.securityState.throwLockSeconds <= 0) {
       this.alertState = recordThrow(this.alertState, ALERT_RULES);
       if (this.stopFrameIfCaught()) {
         return;
@@ -480,9 +494,12 @@ export class GameScene extends Phaser.Scene {
         projectileRulesFor(selectedDefinition)
       );
       if (fired) {
+        if (this.levelDefinition.security) this.securityState = registerThrowExposure(this.securityState, this.playerState.x, this.levelDefinition.security);
         this.poopInventory = consumeSelectedPoop(this.poopInventory, POOP_DEFINITIONS);
         this.levelSession = updateLevelMetrics(this.levelSession, {
-          throwCount: this.levelSession.metrics.throwCount + 1
+          throwCount: this.levelSession.metrics.throwCount + 1,
+          goldenPoopUsed: (this.levelSession.metrics.goldenPoopUsed ?? 0) + (selectedDefinition.id === 'golden_poop' ? 1 : 0),
+          goldenPoopRemaining: this.goldenStock()
         });
       }
     }
@@ -539,6 +556,14 @@ export class GameScene extends Phaser.Scene {
           }
         }
       }
+      if (this.levelDefinition.security) {
+        for (const event of hitResult.events) {
+          if (event.type !== GameplayEventTypes.ProjectileHit || event.npcType !== 'security_guard') continue;
+          const hadObservation = this.securityState.instances.some((instance) => instance.sourceId === `guard:${event.npcId}`);
+          this.securityState = cancelSecurityForGuard(this.securityState, event.npcId);
+          if (hadObservation) this.alertState = applyAlertDelta(this.alertState, this.levelDefinition.security.guardHitAlertPenalty, 'npc_danger', ALERT_RULES);
+        }
+      }
       const splashHitsByProjectile = new Map<number, number>();
       for (const event of hitResult.events) {
         if (event.type === GameplayEventTypes.ProjectileHit && event.poopType === 'splash_poop') {
@@ -560,7 +585,11 @@ export class GameScene extends Phaser.Scene {
           for (const tag of event.interactionTags) next[tag] = (next[tag] ?? 0) + 1;
           return next;
         }, { ...(this.levelSession.metrics.interactionCounts ?? {}) }),
-        maxSplashTargetsHit
+        maxSplashTargetsHit,
+        goldenPoopHits: (this.levelSession.metrics.goldenPoopHits ?? 0) + hitResult.events.filter(
+          (event) => event.type === GameplayEventTypes.ProjectileHit && event.poopType === 'golden_poop'
+        ).length,
+        goldenPoopRemaining: this.goldenStock()
       });
       this.projectileSystem.recycleByIds(hitResult.projectileIdsToRecycle);
       this.hitTokens = new Set(removeHitTokensForProjectiles(this.hitTokens, hitResult.projectileIdsToRecycle));
@@ -576,9 +605,13 @@ export class GameScene extends Phaser.Scene {
     if (!this.isComboClockPaused()) {
       this.scoreState = updateComboTimer(this.scoreState, deltaSeconds);
     }
+    const priorSessionScore = this.levelSession.metrics.totalScore;
     this.levelSession = updateLevelMetrics(this.levelSession, {
       totalScore: this.scoreState.totalScore,
-      highestCombo: this.scoreState.comboCount
+      highestCombo: this.scoreState.comboCount,
+      scoreAfterBlockade: this.securityState.blockade.phase === 'active'
+        ? (this.levelSession.metrics.scoreAfterBlockade ?? 0) + Math.max(0, this.scoreState.totalScore - priorSessionScore)
+        : this.levelSession.metrics.scoreAfterBlockade
     });
     if (this.levelSession.phase === 'settled') {
       this.isGameOver = true;
@@ -613,6 +646,7 @@ export class GameScene extends Phaser.Scene {
             SCORE_RULES.combo.baseWindowSeconds + (definition.capability.goldenComboExtensionSeconds ?? 0)
         }
       };
+      const scoreBefore = this.scoreState.totalScore;
       this.scoreState = scoreRantEvent(
         this.scoreState,
         {
@@ -627,6 +661,12 @@ export class GameScene extends Phaser.Scene {
         },
         scoringRules
       );
+      if (event.poopType === 'golden_poop' && this.levelSession) {
+        const session = this.levelSession;
+        this.levelSession = updateLevelMetrics(session, {
+          goldenPoopScore: (session.metrics.goldenPoopScore ?? 0) + this.scoreState.totalScore - scoreBefore
+        });
+      }
     }
   }
 
@@ -669,7 +709,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private levelPoopDefinitions() {
-    return POOP_DEFINITIONS.filter((definition) => this.levelDefinition.availablePoopTypes.includes(definition.id));
+    return POOP_DEFINITIONS
+      .filter((definition) => this.levelDefinition.availablePoopTypes.includes(definition.id))
+      .map((definition) => ({
+        ...definition,
+        initialStock: this.levelDefinition.poopStockOverrides?.[definition.id] ?? definition.initialStock
+      }));
+  }
+
+  private goldenStock(): number {
+    const slot = this.poopInventory.slots.find((candidate) => candidate.poopType === 'golden_poop');
+    return slot?.stock === 'infinite' ? 0 : slot?.stock ?? 0;
   }
 
   private levelSpawnConfig(): NPCSpawnConfig {
@@ -864,6 +914,58 @@ export class GameScene extends Phaser.Scene {
       capturesDuringClimax: stats.capturesDuringClimax
     });
     this.surveillanceSystem?.sync(this.surveillanceState);
+  }
+
+  private updateSecurityRuntime(deltaSeconds: number, isCharging: boolean): void {
+    const baseRules = this.levelDefinition.security;
+    if (!baseRules || !this.levelSession) return;
+    const securityEvent = activeEventForChannel(this.levelDefinition, this.levelSession, 'securityChannel')?.security;
+    const blockadeEvent = activeEventForChannel(this.levelDefinition, this.levelSession, 'blockadeChannel')?.blockade;
+    const rules = securityEvent ? {
+      ...baseRules,
+      detectionRatePerSecond: baseRules.detectionRatePerSecond * securityEvent.detectionRateMultiplier
+    } : baseRules;
+    const update = updateSecurity(this.securityState, {
+      deltaSeconds,
+      playerX: this.playerState.x,
+      isCharging,
+      movementBounds: { minX: this.layout.rooftop.minX, maxX: this.layout.rooftop.maxX },
+      guards: this.npcSpawnerState.npcs
+        .filter((npc) => npc.definitionId === 'security_guard' &&
+          npc.state !== 'Hit' && npc.state !== 'Ranting' && npc.state !== 'Recovering' && npc.state !== 'Exiting')
+        .map((npc) => ({ id: npc.id, x: npc.x })),
+      activateBlockade: Boolean(blockadeEvent),
+      detectionRateMultiplier: 1
+    }, rules, this.levelDefinition.blockade);
+    this.securityState = update.state;
+    for (const result of update.results) {
+      if (result.outcome !== 'detected') continue;
+      this.alertState = applyAlertDelta(this.alertState, rules.spottedAlertPenalty, 'npc_danger', ALERT_RULES);
+    }
+    const stats = this.securityState.stats;
+    this.levelSession = updateLevelMetrics(this.levelSession, {
+      guardObservationsStarted: stats.guardObservationsStarted,
+      guardObservationsAvoided: stats.guardObservationsAvoided,
+      searchlightWindowsSurvived: stats.searchlightWindowsSurvived,
+      securityDetections: stats.securityDetections,
+      detectionsWhileExposed: stats.detectionsWhileExposed,
+      throwsWhileConcealed: stats.throwsWhileConcealed,
+      goldenPoopRemaining: this.goldenStock(),
+      blockadeTriggered: stats.blockadeTriggered,
+      maximumSecurityDetectionProgress: stats.maximumDetectionProgress
+    });
+    this.securitySystem?.sync(this.securityState);
+  }
+
+  private securityMovementBounds(): { readonly minX: number; readonly maxX: number } {
+    const rooftop = { minX: this.layout.rooftop.minX, maxX: this.layout.rooftop.maxX };
+    if (this.securityState.blockade.phase !== 'active') return rooftop;
+    const reachable = getReachableHorizontalIntervals(rooftop, this.securityState.blockade.blockedIntervals);
+    const containingPlayer = reachable.find((interval) => this.playerState.x >= interval.start && this.playerState.x <= interval.end);
+    const selected = containingPlayer ?? [...reachable].sort((left, right) =>
+      (right.end - right.start) - (left.end - left.start) || left.start - right.start
+    )[0];
+    return selected ? { minX: selected.start, maxX: selected.end } : rooftop;
   }
 
   private syncZoneViews(): void {
@@ -1261,6 +1363,8 @@ export class GameScene extends Phaser.Scene {
     window.__SHIMING_BIDA_DEBUG__.counterattackViewPool = this.counterattackSystem?.stats();
     window.__SHIMING_BIDA_DEBUG__.surveillanceState = this.surveillanceState;
     window.__SHIMING_BIDA_DEBUG__.surveillanceViewPool = this.surveillanceSystem?.stats();
+    window.__SHIMING_BIDA_DEBUG__.securityState = this.securityState;
+    window.__SHIMING_BIDA_DEBUG__.securityViewPool = this.securitySystem?.stats();
     window.__SHIMING_BIDA_DEBUG__.isGameOver = this.isGameOver;
     window.__SHIMING_BIDA_DEBUG__.isPlayerInCover = this.isPlayerInCover();
     window.__SHIMING_BIDA_DEBUG__.projectileSystem = this.projectileSystem.snapshot();
@@ -1364,6 +1468,8 @@ export class GameScene extends Phaser.Scene {
     delete debug.counterattackViewPool;
     delete debug.surveillanceState;
     delete debug.surveillanceViewPool;
+    delete debug.securityState;
+    delete debug.securityViewPool;
     delete debug.isGameOver;
     delete debug.isPlayerInCover;
     delete debug.projectileSystem;

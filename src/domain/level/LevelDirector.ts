@@ -66,7 +66,12 @@ export function createLevelSession(definition: LevelDefinition, attempt = 1): Le
       counterattacksHitPlayer: 0, maxConcurrentCounterattacksObserved: 0,
       cameraTelegraphsStarted: 0, snapshotsActivated: 0, snapshotsAvoided: 0, snapshotCaptures: 0,
       recordingWindowsStarted: 0, recordingWindowsSurvived: 0, recordingCaptures: 0,
-      maximumExposureReached: 0, capturesDuringThrow: 0, capturesDuringClimax: 0
+      maximumExposureReached: 0, capturesDuringThrow: 0, capturesDuringClimax: 0,
+      guardObservationsStarted: 0, guardObservationsAvoided: 0, searchlightWindowsSurvived: 0,
+      securityDetections: 0, detectionsWhileExposed: 0, throwsWhileConcealed: 0,
+      goldenPoopUsed: 0, goldenPoopHits: 0, goldenPoopScore: 0,
+      goldenPoopRemaining: definition.poopStockOverrides?.golden_poop === 'infinite' ? 0 : definition.poopStockOverrides?.golden_poop ?? 0,
+      scoreAfterBlockade: 0, blockadeTriggered: 0, maximumSecurityDetectionProgress: 0
     },
     completionCount: 0,
     triggeredEventIds: []
@@ -127,7 +132,20 @@ export function updateLevelMetrics(session: LevelSession, metrics: Partial<Level
       recordingCaptures: metrics.recordingCaptures ?? session.metrics.recordingCaptures,
       maximumExposureReached: Math.max(session.metrics.maximumExposureReached ?? 0, metrics.maximumExposureReached ?? 0),
       capturesDuringThrow: metrics.capturesDuringThrow ?? session.metrics.capturesDuringThrow,
-      capturesDuringClimax: metrics.capturesDuringClimax ?? session.metrics.capturesDuringClimax
+      capturesDuringClimax: metrics.capturesDuringClimax ?? session.metrics.capturesDuringClimax,
+      guardObservationsStarted: metrics.guardObservationsStarted ?? session.metrics.guardObservationsStarted,
+      guardObservationsAvoided: metrics.guardObservationsAvoided ?? session.metrics.guardObservationsAvoided,
+      searchlightWindowsSurvived: metrics.searchlightWindowsSurvived ?? session.metrics.searchlightWindowsSurvived,
+      securityDetections: metrics.securityDetections ?? session.metrics.securityDetections,
+      detectionsWhileExposed: metrics.detectionsWhileExposed ?? session.metrics.detectionsWhileExposed,
+      throwsWhileConcealed: metrics.throwsWhileConcealed ?? session.metrics.throwsWhileConcealed,
+      goldenPoopUsed: metrics.goldenPoopUsed ?? session.metrics.goldenPoopUsed,
+      goldenPoopHits: metrics.goldenPoopHits ?? session.metrics.goldenPoopHits,
+      goldenPoopScore: metrics.goldenPoopScore ?? session.metrics.goldenPoopScore,
+      goldenPoopRemaining: metrics.goldenPoopRemaining ?? session.metrics.goldenPoopRemaining,
+      scoreAfterBlockade: metrics.scoreAfterBlockade ?? session.metrics.scoreAfterBlockade,
+      blockadeTriggered: metrics.blockadeTriggered ?? session.metrics.blockadeTriggered,
+      maximumSecurityDetectionProgress: Math.max(session.metrics.maximumSecurityDetectionProgress ?? 0, metrics.maximumSecurityDetectionProgress ?? 0)
     }
   };
   return evaluateObjective(updated.definition, updated.metrics).complete ? settleLevel(updated, 'success') : updated;

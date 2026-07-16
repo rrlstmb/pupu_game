@@ -20,6 +20,7 @@ import type { CleanerSystemState } from './domain/poop/CleanerSystem';
 import type { CounterattackState } from './domain/counterattack/CounterattackSystem';
 import type { CounterattackViewStats } from './systems/counterattack/PhaserCounterattackSystem';
 import type { SurveillanceState } from './domain/surveillance/SurveillanceSystem';
+import type { SecurityState } from './domain/security/SecuritySystem';
 
 declare global {
   interface Window {
@@ -48,6 +49,8 @@ declare global {
       counterattackViewPool?: CounterattackViewStats;
       surveillanceState?: SurveillanceState;
       surveillanceViewPool?: { readonly active: number; readonly pooled: number; readonly created: number };
+      securityState?: SecurityState;
+      securityViewPool?: { readonly active: number; readonly pooled: number; readonly created: number; readonly blockadeViews: number };
       isGameOver?: boolean;
       isPlayerInCover?: boolean;
       hudScoreText?: string;
