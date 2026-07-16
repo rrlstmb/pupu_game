@@ -984,7 +984,10 @@ test('phase 12 runs Level 1 through pause, timeout result, and deterministic cle
     npcHitCounts: {}, interactionCounts: {}, maxSplashTargetsHit: 0,
     zoneAffectedNpcCount: 0, maxNpcAffectedBySingleZone: 0,
     counterattacksTelegraphed: 0, counterattacksFired: 0, counterattacksDodged: 0,
-    counterattacksHitPlayer: 0, maxConcurrentCounterattacksObserved: 0
+    counterattacksHitPlayer: 0, maxConcurrentCounterattacksObserved: 0,
+    cameraTelegraphsStarted: 0, snapshotsActivated: 0, snapshotsAvoided: 0, snapshotCaptures: 0,
+    recordingWindowsStarted: 0, recordingWindowsSurvived: 0, recordingCaptures: 0,
+    maximumExposureReached: 0, capturesDuringThrow: 0, capturesDuringClimax: 0
   });
   expect((await npcSpawner(page)).npcs).toHaveLength(0);
   expect((await projectileSystem(page)).projectiles).toHaveLength(0);
@@ -1297,6 +1300,88 @@ test('phase 12 settles Level 1 success once from legal normal-poop scoring', asy
   await expect.poll(() => hudResultText(page)).toContain('[PASS] 達成目標分數 500');
   await page.screenshot({ path: 'docs/evidence/phase-12-level-01-success.png', fullPage: true });
 });
+
+test('phase 19 level 8 separates snapshot and recording surveillance with safe reset', async ({ page }) => {
+  test.setTimeout(60_000);
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+  page.on('pageerror', (error) => consoleErrors.push(error.message));
+  await page.goto('/');
+  await expect(page.locator('canvas')).toHaveAttribute('data-game-ready', 'true');
+  const box = await page.locator('canvas').boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(box!.x + box!.width * (240 / 1280), box!.y + box!.height * (560 / 720));
+  await expect.poll(() => activeScenes(page)).toContain('GameScene');
+  await startLevelForTest(page);
+  await expect.poll(async () => (await levelSession(page)).definition.id).toBe('level_08');
+  await page.evaluate(() => {
+    const debug = window.__SHIMING_BIDA_DEBUG__;
+    debug?.clearNPCSandbox?.(true);
+    debug?.spawnNPCSandbox?.('camera_pedestrian', 950, 'mid_sidewalk');
+  });
+  await expect.poll(async () => (await surveillanceState(page)).instances.some((item) => item.mode === 'snapshot'), { timeout: 8_000 }).toBe(true);
+  let state = await surveillanceState(page);
+  const snapshot = state.instances.find((item) => item.mode === 'snapshot')!;
+  await page.evaluate((x) => window.__SHIMING_BIDA_DEBUG__?.setPlayerX?.(x), snapshot.targetZone.centerX);
+  await page.screenshot({ path: 'docs/evidence/phase-19-snapshot-telegraph.png', fullPage: true });
+  const alertBefore = (await alertState(page)).value;
+  await expect.poll(async () => (await surveillanceState(page)).stats.snapshotCaptures, { timeout: 6_000 }).toBe(1);
+  expect((await alertState(page)).value).toBeGreaterThan(alertBefore);
+
+  await page.evaluate(() => {
+    const debug = window.__SHIMING_BIDA_DEBUG__;
+    if (!debug?.levelSession) throw new Error('Missing level session');
+    debug.game.scene.getScene('GameScene').scene.restart({ levelDefinition: debug.levelSession.definition });
+  });
+  await startLevelForTest(page);
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.clearNPCSandbox?.(true));
+  await expect.poll(async () => (await surveillanceState(page)).instances.length).toBe(0);
+  state = await surveillanceState(page);
+  expect(state).toMatchObject({ instances: [], throwLockSeconds: 0, invulnerabilitySeconds: 0 });
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.spawnNPCSandbox?.('camera_pedestrian', 950, 'mid_sidewalk'));
+  await expect.poll(async () => (await surveillanceState(page)).instances.some((item) => item.mode === 'snapshot'), { timeout: 8_000 }).toBe(true);
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.setPlayerX?.(150));
+  await expect.poll(async () => (await surveillanceState(page)).stats.snapshotsAvoided, { timeout: 6_000 }).toBe(1);
+  await page.evaluate(() => {
+    const debug = window.__SHIMING_BIDA_DEBUG__;
+    debug?.clearNPCSandbox?.(true);
+    debug?.spawnNPCSandbox?.('streamer', 950, 'mid_sidewalk');
+  });
+  await expect.poll(async () => (await surveillanceState(page)).instances.some((item) => item.mode === 'recording' && item.state === 'active'), { timeout: 6_000 }).toBe(true);
+  state = await surveillanceState(page);
+  const recording = state.instances.find((item) => item.mode === 'recording')!;
+  await page.evaluate((x) => window.__SHIMING_BIDA_DEBUG__?.setPlayerX?.(x), recording.targetZone.centerX);
+  await expect.poll(async () => (await surveillanceState(page)).instances.find((item) => item.mode === 'recording')?.exposure ?? 0).toBeGreaterThan(0.1);
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.setPlayerX?.(150));
+  const exposureBefore = (await surveillanceState(page)).instances.find((item) => item.mode === 'recording')?.exposure ?? 0;
+  await page.waitForTimeout(450);
+  expect((await surveillanceState(page)).instances.find((item) => item.mode === 'recording')?.exposure ?? 0).toBeLessThan(exposureBefore);
+
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.advanceLevelTime?.(101));
+  const climax = await levelSession(page);
+  expect(climax.triggeredEventIds.filter((id) => id === 'live_wave_surveillance')).toHaveLength(1);
+  expect(climax.triggeredEventIds).toContain('live_wave_spawn');
+  expect(await debugOverlayVisible(page)).toBe(false);
+  expect(consoleErrors).toEqual([]);
+});
+
+async function surveillanceState(page: Page): Promise<{
+  instances: Array<{ id: string; sourceNpcId: number; mode: string; state: string; exposure: number; targetZone: { centerX: number; halfWidth: number } }>;
+  queuedSourceIds: number[];
+  throwLockSeconds: number;
+  invulnerabilitySeconds: number;
+  stats: { snapshotCaptures: number; snapshotsAvoided: number; recordingCaptures: number; recordingWindowsSurvived: number };
+}> {
+  return page.evaluate(() => {
+    const state = window.__SHIMING_BIDA_DEBUG__?.surveillanceState;
+    if (!state) throw new Error('Surveillance debug state is unavailable');
+    return {
+      instances: state.instances.map((item) => ({ ...item, targetZone: { ...item.targetZone } })),
+      queuedSourceIds: [...state.queuedSourceIds], throwLockSeconds: state.throwLockSeconds,
+      invulnerabilitySeconds: state.invulnerabilitySeconds, stats: { ...state.stats }
+    };
+  });
+}
 
 async function activeScenes(page: Page): Promise<string[]> {
   return page.evaluate(() => {

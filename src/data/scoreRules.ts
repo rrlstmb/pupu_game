@@ -13,6 +13,7 @@ export const SCORE_RULES: ScoreRules = {
     cleaner: 90,
     angry_pedestrian: 170,
     camera_pedestrian: 190,
+    streamer: 210,
     tourist: 110,
     security_guard: 80
   } satisfies Record<NPCType, number>,

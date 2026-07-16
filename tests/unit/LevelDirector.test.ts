@@ -79,7 +79,10 @@ describe('LevelDirector', () => {
       npcHitCounts: {}, interactionCounts: {}, maxSplashTargetsHit: 0,
       zoneAffectedNpcCount: 0, maxNpcAffectedBySingleZone: 0,
       counterattacksTelegraphed: 0, counterattacksFired: 0, counterattacksDodged: 0,
-      counterattacksHitPlayer: 0, maxConcurrentCounterattacksObserved: 0
+      counterattacksHitPlayer: 0, maxConcurrentCounterattacksObserved: 0,
+      cameraTelegraphsStarted: 0, snapshotsActivated: 0, snapshotsAvoided: 0, snapshotCaptures: 0,
+      recordingWindowsStarted: 0, recordingWindowsSurvived: 0, recordingCaptures: 0,
+      maximumExposureReached: 0, capturesDuringThrow: 0, capturesDuringClimax: 0
     });
     expect(reset.result).toBeUndefined();
     expect(reset.remainingSeconds).toBe(90);

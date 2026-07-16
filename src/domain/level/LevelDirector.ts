@@ -63,7 +63,10 @@ export function createLevelSession(definition: LevelDefinition, attempt = 1): Le
       npcHitCounts: {}, interactionCounts: {}, maxSplashTargetsHit: 0,
       zoneAffectedNpcCount: 0, maxNpcAffectedBySingleZone: 0,
       counterattacksTelegraphed: 0, counterattacksFired: 0, counterattacksDodged: 0,
-      counterattacksHitPlayer: 0, maxConcurrentCounterattacksObserved: 0
+      counterattacksHitPlayer: 0, maxConcurrentCounterattacksObserved: 0,
+      cameraTelegraphsStarted: 0, snapshotsActivated: 0, snapshotsAvoided: 0, snapshotCaptures: 0,
+      recordingWindowsStarted: 0, recordingWindowsSurvived: 0, recordingCaptures: 0,
+      maximumExposureReached: 0, capturesDuringThrow: 0, capturesDuringClimax: 0
     },
     completionCount: 0,
     triggeredEventIds: []
@@ -114,7 +117,17 @@ export function updateLevelMetrics(session: LevelSession, metrics: Partial<Level
       counterattacksFired: metrics.counterattacksFired ?? session.metrics.counterattacksFired,
       counterattacksDodged: metrics.counterattacksDodged ?? session.metrics.counterattacksDodged,
       counterattacksHitPlayer: metrics.counterattacksHitPlayer ?? session.metrics.counterattacksHitPlayer,
-      maxConcurrentCounterattacksObserved: Math.max(session.metrics.maxConcurrentCounterattacksObserved ?? 0, metrics.maxConcurrentCounterattacksObserved ?? 0)
+      maxConcurrentCounterattacksObserved: Math.max(session.metrics.maxConcurrentCounterattacksObserved ?? 0, metrics.maxConcurrentCounterattacksObserved ?? 0),
+      cameraTelegraphsStarted: metrics.cameraTelegraphsStarted ?? session.metrics.cameraTelegraphsStarted,
+      snapshotsActivated: metrics.snapshotsActivated ?? session.metrics.snapshotsActivated,
+      snapshotsAvoided: metrics.snapshotsAvoided ?? session.metrics.snapshotsAvoided,
+      snapshotCaptures: metrics.snapshotCaptures ?? session.metrics.snapshotCaptures,
+      recordingWindowsStarted: metrics.recordingWindowsStarted ?? session.metrics.recordingWindowsStarted,
+      recordingWindowsSurvived: metrics.recordingWindowsSurvived ?? session.metrics.recordingWindowsSurvived,
+      recordingCaptures: metrics.recordingCaptures ?? session.metrics.recordingCaptures,
+      maximumExposureReached: Math.max(session.metrics.maximumExposureReached ?? 0, metrics.maximumExposureReached ?? 0),
+      capturesDuringThrow: metrics.capturesDuringThrow ?? session.metrics.capturesDuringThrow,
+      capturesDuringClimax: metrics.capturesDuringClimax ?? session.metrics.capturesDuringClimax
     }
   };
   return evaluateObjective(updated.definition, updated.metrics).complete ? settleLevel(updated, 'success') : updated;

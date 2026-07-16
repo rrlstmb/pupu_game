@@ -23,6 +23,7 @@ import {
 } from '../domain/alert/AlertSystem';
 import { isPlayerInCover } from '../domain/alert/CoverVisibility';
 import { createCounterattackState, registerAngryHit, updateCounterattacks, type CounterattackState } from '../domain/counterattack/CounterattackSystem';
+import { cancelSurveillanceForSource, createSurveillanceState, updateSurveillance, type SurveillanceState } from '../domain/surveillance/SurveillanceSystem';
 import { removeHitTokensForProjectiles, resolveProjectileNPCHits } from '../domain/gameplay/HitDetection';
 import {
   collectNPCStateTransitionEvents,
@@ -102,6 +103,7 @@ import { PhaserProjectileSystem } from '../systems/projectile/PhaserProjectileSy
 import { PhaserChargeMeter } from '../systems/projectile/PhaserChargeMeter';
 import { PhaserWindIndicator } from '../systems/wind/PhaserWindIndicator';
 import { PhaserCounterattackSystem } from '../systems/counterattack/PhaserCounterattackSystem';
+import { PhaserSurveillanceSystem } from '../systems/surveillance/PhaserSurveillanceSystem';
 
 export class GameScene extends Phaser.Scene {
   private levelDefinition: LevelDefinition = LEVEL_01;
@@ -126,6 +128,8 @@ export class GameScene extends Phaser.Scene {
   private cleanerState: CleanerSystemState = createCleanerSystemState();
   private counterattackState: CounterattackState = createCounterattackState();
   private counterattackSystem?: PhaserCounterattackSystem;
+  private surveillanceState: SurveillanceState = createSurveillanceState();
+  private surveillanceSystem?: PhaserSurveillanceSystem;
   private projectileConfig: ProjectileConfig = NORMAL_POOP_PROJECTILE_CONFIG;
   private chargeState: ChargeState = createChargeState();
   private lastLandingHitDebug?: {
@@ -166,6 +170,7 @@ export class GameScene extends Phaser.Scene {
     this.environmentalEffects = createEnvironmentalEffectState();
     this.cleanerState = createCleanerSystemState();
     this.counterattackState = createCounterattackState();
+    this.surveillanceState = createSurveillanceState();
     this.projectileConfig = NORMAL_POOP_PROJECTILE_CONFIG;
     this.chargeState = createChargeState();
     this.windState = CALM_WIND_STATE;
@@ -188,6 +193,9 @@ export class GameScene extends Phaser.Scene {
     this.npcSystem = new PhaserNPCSystem(this, NPC_DEFINITIONS);
     this.counterattackSystem = this.levelDefinition.counterattack
       ? new PhaserCounterattackSystem(this, this.levelDefinition.counterattack)
+      : undefined;
+    this.surveillanceSystem = this.levelDefinition.surveillance
+      ? new PhaserSurveillanceSystem(this, this.levelDefinition.surveillance, this.playerY() + 34)
       : undefined;
     this.npcSpawnerState = createNPCSpawnerState();
     emitSceneReady(this);
@@ -299,6 +307,8 @@ export class GameScene extends Phaser.Scene {
       this.windIndicator.dispose();
       this.counterattackSystem?.dispose();
       this.counterattackSystem = undefined;
+      this.surveillanceSystem?.dispose();
+      this.surveillanceSystem = undefined;
       this.npcSystem.dispose();
       this.scrollingLayers.length = 0;
       this.debugOverlay?.destroy(true);
@@ -389,6 +399,7 @@ export class GameScene extends Phaser.Scene {
       this.applyGameplayEventsToScore(transitionEvents);
     }
     this.updateCounterattackRuntime(deltaSeconds);
+    this.updateSurveillanceRuntime(deltaSeconds, input.throw.held);
     this.environmentalEffects = updateEnvironmentalEffects(this.environmentalEffects, deltaSeconds);
     this.updateCleanupSystems(deltaSeconds);
     const areaUpdate = applyAreaEffectsToNPCs(
@@ -408,7 +419,8 @@ export class GameScene extends Phaser.Scene {
     if (stinkAlertIncrease > 0) {
       this.alertState = applyAlertDelta(this.alertState, stinkAlertIncrease, 'stink_zone', ALERT_RULES);
     }
-    const npcAlertPulse = this.npcSpawnerState.npcs.reduce((total, npc) => total + (npc.alertPulse ?? 0), 0);
+    const npcAlertPulse = this.npcSpawnerState.npcs.reduce((total, npc) =>
+      total + (this.levelDefinition.surveillance && (npc.definitionId === 'camera_pedestrian' || npc.definitionId === 'streamer') ? 0 : npc.alertPulse ?? 0), 0);
     if (npcAlertPulse > 0) {
       this.alertState = applyAlertDelta(this.alertState, npcAlertPulse, 'npc_danger', ALERT_RULES);
     }
@@ -429,7 +441,7 @@ export class GameScene extends Phaser.Scene {
       this.chargeState,
       input.throw,
       deltaSeconds,
-      canUseSelectedPoop(this.poopInventory) && this.counterattackState.throwLockSeconds <= 0,
+      canUseSelectedPoop(this.poopInventory) && this.counterattackState.throwLockSeconds <= 0 && this.surveillanceState.throwLockSeconds <= 0,
       THROW_CHARGE_CONFIG
     );
     this.chargeState = chargeUpdate.state;
@@ -450,7 +462,7 @@ export class GameScene extends Phaser.Scene {
       this.projectileSystem.getActualLandingError()
     );
 
-    if (chargeUpdate.releasedThrowPower !== undefined && canUseSelectedPoop(this.poopInventory) && this.counterattackState.throwLockSeconds <= 0) {
+    if (chargeUpdate.releasedThrowPower !== undefined && canUseSelectedPoop(this.poopInventory) && this.counterattackState.throwLockSeconds <= 0 && this.surveillanceState.throwLockSeconds <= 0) {
       this.alertState = recordThrow(this.alertState, ALERT_RULES);
       if (this.stopFrameIfCaught()) {
         return;
@@ -514,6 +526,16 @@ export class GameScene extends Phaser.Scene {
         for (const event of hitResult.events) {
           if (event.type === GameplayEventTypes.ProjectileHit && event.npcType === 'angry_pedestrian') {
             this.counterattackState = registerAngryHit(this.counterattackState, event.token, event.npcId, counterRules);
+          }
+        }
+      }
+      if (this.levelDefinition.surveillance) {
+        for (const event of hitResult.events) {
+          if (event.type !== GameplayEventTypes.ProjectileHit || (event.npcType !== 'camera_pedestrian' && event.npcType !== 'streamer')) continue;
+          const wasRecording = this.surveillanceState.instances.some((instance) => instance.sourceNpcId === event.npcId);
+          if (wasRecording) {
+            this.surveillanceState = cancelSurveillanceForSource(this.surveillanceState, event.npcId);
+            this.alertState = applyAlertDelta(this.alertState, this.levelDefinition.surveillance.interruptionAlertPenalty, 'npc_danger', ALERT_RULES);
           }
         }
       }
@@ -797,6 +819,53 @@ export class GameScene extends Phaser.Scene {
     this.counterattackSystem?.sync(this.counterattackState);
   }
 
+  private updateSurveillanceRuntime(deltaSeconds: number, isThrowing: boolean): void {
+    const baseRules = this.levelDefinition.surveillance;
+    if (!baseRules || !this.levelSession) return;
+    const climax = activeEventForChannel(this.levelDefinition, this.levelSession, 'surveillanceChannel')?.surveillance;
+    const rules = climax ? {
+      ...baseRules,
+      globalMinimumGapSeconds: baseRules.globalMinimumGapSeconds * climax.globalGapMultiplier,
+      maxConcurrentTelegraphs: baseRules.maxConcurrentTelegraphs + climax.maxConcurrentTelegraphsBonus
+    } : baseRules;
+    const update = updateSurveillance(this.surveillanceState, {
+      deltaSeconds,
+      playerX: this.playerState.x,
+      isThrowing,
+      isClimax: Boolean(climax),
+      movementBounds: this.layout.rooftop,
+      sources: this.npcSpawnerState.npcs
+        .filter((npc) => (npc.definitionId === 'camera_pedestrian' || npc.definitionId === 'streamer') &&
+          npc.state !== 'Exiting' && npc.state !== 'Hit' && npc.state !== 'Ranting' && npc.state !== 'Recovering')
+        .map((npc) => ({ id: npc.id, x: npc.x, mode: npc.definitionId === 'streamer' ? 'recording' as const : 'snapshot' as const }))
+    }, rules);
+    this.surveillanceState = update.state;
+    for (const result of update.results) {
+      if (result.outcome !== 'captured') continue;
+      const definition = result.mode === 'snapshot' ? rules.snapshot : rules.recording;
+      this.alertState = applyAlertDelta(
+        this.alertState,
+        definition.alertPenalty * rules.alertMultiplier,
+        'npc_danger',
+        ALERT_RULES
+      );
+    }
+    const stats = update.state.stats;
+    this.levelSession = updateLevelMetrics(this.levelSession, {
+      cameraTelegraphsStarted: stats.telegraphsStarted,
+      snapshotsActivated: stats.snapshotsActivated,
+      snapshotsAvoided: stats.snapshotsAvoided,
+      snapshotCaptures: stats.snapshotCaptures,
+      recordingWindowsStarted: stats.recordingWindowsStarted,
+      recordingWindowsSurvived: stats.recordingWindowsSurvived,
+      recordingCaptures: stats.recordingCaptures,
+      maximumExposureReached: stats.maximumExposureReached,
+      capturesDuringThrow: stats.capturesDuringThrow,
+      capturesDuringClimax: stats.capturesDuringClimax
+    });
+    this.surveillanceSystem?.sync(this.surveillanceState);
+  }
+
   private syncZoneViews(): void {
     const activeIds = new Set(this.environmentalEffects.zones.map((zone) => zone.id));
     for (const [id, view] of this.zoneViews.entries()) {
@@ -829,6 +898,7 @@ export class GameScene extends Phaser.Scene {
     this.renderWeather(layout);
     this.renderCleanupDayDecorations(layout);
     this.renderResidentialAlleyDecorations(layout);
+    this.renderLiveEventDecorations(layout);
     this.renderBounceSurfaces();
     this.renderDebugOverlay(layout);
   }
@@ -868,6 +938,21 @@ export class GameScene extends Phaser.Scene {
       this.add.rectangle(x, layout.lanes[1].y, 52, 46, 0x334155, 0.9).setDepth(depth);
       this.add.text(x, layout.lanes[1].y, '巷口', { fontFamily: 'sans-serif', fontSize: '14px', color: '#f8fafc' })
         .setOrigin(0.5).setDepth(depth + 1);
+    }
+  }
+
+  private renderLiveEventDecorations(layout: WorldLayout): void {
+    if (this.levelDefinition.visual.profile !== 'live_event') return;
+    const depth = Depths.alleyBack + 12;
+    this.add.text(layout.width / 2, layout.zones[0].height + 18, 'LIVE CORNER  全城直播中', {
+      fontFamily: 'monospace', fontSize: '20px', color: '#cffafe', backgroundColor: '#155e75', padding: { x: 14, y: 6 }
+    }).setOrigin(0.5, 0).setDepth(depth);
+    for (const zone of this.levelDefinition.surveillance?.concealmentZones ?? []) {
+      this.add.rectangle(zone.x, layout.rooftop.y + 12, zone.width, layout.rooftop.height - 24, 0x0f172a, 0.82)
+        .setOrigin(0, 0).setDepth(Depths.cover);
+      this.add.text(zone.x + zone.width / 2, layout.rooftop.y + 32, '盲區', {
+        fontFamily: 'sans-serif', fontSize: '16px', color: '#e2e8f0'
+      }).setOrigin(0.5).setDepth(Depths.cover + 1);
     }
   }
 
@@ -1174,6 +1259,8 @@ export class GameScene extends Phaser.Scene {
     window.__SHIMING_BIDA_DEBUG__.cleanerSystem = this.cleanerState;
     window.__SHIMING_BIDA_DEBUG__.counterattackState = this.counterattackState;
     window.__SHIMING_BIDA_DEBUG__.counterattackViewPool = this.counterattackSystem?.stats();
+    window.__SHIMING_BIDA_DEBUG__.surveillanceState = this.surveillanceState;
+    window.__SHIMING_BIDA_DEBUG__.surveillanceViewPool = this.surveillanceSystem?.stats();
     window.__SHIMING_BIDA_DEBUG__.isGameOver = this.isGameOver;
     window.__SHIMING_BIDA_DEBUG__.isPlayerInCover = this.isPlayerInCover();
     window.__SHIMING_BIDA_DEBUG__.projectileSystem = this.projectileSystem.snapshot();
@@ -1275,6 +1362,8 @@ export class GameScene extends Phaser.Scene {
     delete debug.cleanerSystem;
     delete debug.counterattackState;
     delete debug.counterattackViewPool;
+    delete debug.surveillanceState;
+    delete debug.surveillanceViewPool;
     delete debug.isGameOver;
     delete debug.isPlayerInCover;
     delete debug.projectileSystem;

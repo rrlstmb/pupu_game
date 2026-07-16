@@ -11,6 +11,7 @@ export type NPCType =
   | 'cleaner'
   | 'angry_pedestrian'
   | 'camera_pedestrian'
+  | 'streamer'
   | 'tourist'
   | 'security_guard';
 
@@ -22,6 +23,7 @@ export type NPCTag =
   | 'cleaner'
   | 'retaliates'
   | 'recording'
+  | 'streamer'
   | 'tourist_group'
   | 'security';
 

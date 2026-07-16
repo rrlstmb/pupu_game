@@ -16,6 +16,16 @@ export type LevelMetrics = {
   readonly counterattacksDodged?: number;
   readonly counterattacksHitPlayer?: number;
   readonly maxConcurrentCounterattacksObserved?: number;
+  readonly cameraTelegraphsStarted?: number;
+  readonly snapshotsActivated?: number;
+  readonly snapshotsAvoided?: number;
+  readonly snapshotCaptures?: number;
+  readonly recordingWindowsStarted?: number;
+  readonly recordingWindowsSurvived?: number;
+  readonly recordingCaptures?: number;
+  readonly maximumExposureReached?: number;
+  readonly capturesDuringThrow?: number;
+  readonly capturesDuringClimax?: number;
 };
 
 export type ObjectiveState = {

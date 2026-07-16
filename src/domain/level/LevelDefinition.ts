@@ -13,7 +13,7 @@ export type LevelSpawnDefinition = {
 };
 
 export type LevelVisualDefinition = {
-  readonly profile: 'day' | 'evening' | 'rainy' | 'market_evening' | 'windy_afternoon' | 'cleanup_day' | 'residential_alley';
+  readonly profile: 'day' | 'evening' | 'rainy' | 'market_evening' | 'windy_afternoon' | 'cleanup_day' | 'residential_alley' | 'live_event';
   readonly skylineColor: number;
   readonly alleyColor: number;
   readonly rooftopColor: number;
@@ -53,7 +53,51 @@ export type BounceSurfaceDefinition = {
   readonly bounceCoefficient: number;
 };
 
-export type EventChannel = 'spawnChannel' | 'windChannel' | 'presentationChannel' | 'hazardChannel' | 'cleanupChannel';
+export type EventChannel = 'spawnChannel' | 'windChannel' | 'presentationChannel' | 'hazardChannel' | 'cleanupChannel' | 'surveillanceChannel';
+
+export type SurveillanceModeDefinition = {
+  readonly telegraphDurationSeconds: number;
+  readonly activeDurationSeconds: number;
+  readonly cooldownSeconds: number;
+  readonly targetMode: 'authored_sweep' | 'fixed_zone';
+  readonly authoredCenters: readonly number[];
+  readonly targetHalfWidth: number;
+  readonly exposureRatePerSecond: number;
+  readonly exposureDecayPerSecond: number;
+  readonly captureThreshold: number;
+  readonly alertPenalty: number;
+  readonly throwLockSeconds: number;
+  readonly invulnerabilitySeconds: number;
+  readonly throwingExposureMultiplier: number;
+};
+
+export type ConcealmentZoneDefinition = {
+  readonly id: string;
+  readonly x: number;
+  readonly width: number;
+  readonly blocksModes: readonly ('snapshot' | 'recording')[];
+};
+
+export type SurveillanceDefinition = {
+  readonly snapshot: SurveillanceModeDefinition;
+  readonly recording: SurveillanceModeDefinition;
+  readonly concealmentZones: readonly ConcealmentZoneDefinition[];
+  readonly maxConcurrentTelegraphs: number;
+  readonly maxConcurrentSnapshotWindows: number;
+  readonly maxConcurrentRecordingWindows: number;
+  readonly globalMinimumGapSeconds: number;
+  readonly queueLimit: number;
+  readonly minimumSafeWidth: number;
+  readonly schedulingPolicy: 'source_id_alternating';
+  readonly interruptionAlertPenalty: number;
+  readonly alertMultiplier: number;
+  readonly viewPoolSize: number;
+};
+
+export type SurveillanceEventDefinition = {
+  readonly globalGapMultiplier: number;
+  readonly maxConcurrentTelegraphsBonus: number;
+};
 
 export type CleanerRules = {
   readonly detectionRadius: number;
@@ -111,6 +155,7 @@ export type LevelTimedEvent = {
   readonly presentationCue?: string;
   readonly cleanup?: CleanupEventDefinition;
   readonly counterattack?: CounterattackEventDefinition;
+  readonly surveillance?: SurveillanceEventDefinition;
 };
 
 export type LevelStarCondition =
@@ -121,7 +166,9 @@ export type LevelStarCondition =
   | { readonly id: 'interaction_target'; readonly label: string; readonly interactionTag: string; readonly targetCount: number }
   | { readonly id: 'splash_multi_hit_target'; readonly label: string; readonly targetCount: number }
   | { readonly id: 'area_zone_target'; readonly label: string; readonly mode: 'cumulative' | 'single_zone'; readonly targetCount: number }
-  | { readonly id: 'counter_dodge_target'; readonly label: string; readonly targetCount: number };
+  | { readonly id: 'counter_dodge_target'; readonly label: string; readonly targetCount: number }
+  | { readonly id: 'snapshot_avoid_target'; readonly label: string; readonly targetCount: number }
+  | { readonly id: 'recording_survive_target'; readonly label: string; readonly targetCount: number };
 
 export type LevelDefinition = {
   readonly id: string;
@@ -140,6 +187,7 @@ export type LevelDefinition = {
   readonly areaZone?: AreaEffectZoneRules;
   readonly cleaner?: CleanerRules;
   readonly counterattack?: CounterattackDefinition;
+  readonly surveillance?: SurveillanceDefinition;
   readonly stars: readonly LevelStarCondition[];
 };
 
@@ -149,7 +197,7 @@ export type LevelValidationResult =
 
 const NPC_TYPES: readonly NPCType[] = [
   'office_worker', 'phone_user', 'jogger', 'umbrella_pedestrian', 'delivery_rider', 'dog_walker',
-  'cleaner', 'angry_pedestrian', 'camera_pedestrian', 'tourist', 'security_guard'
+  'cleaner', 'angry_pedestrian', 'camera_pedestrian', 'streamer', 'tourist', 'security_guard'
 ];
 const POOP_TYPES: readonly PoopType[] = [
   'normal_poop', 'sticky_poop', 'splash_poop', 'jumbo_poop', 'bouncy_poop', 'stink_poop', 'split_poop', 'golden_poop'
@@ -186,6 +234,7 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
   validateAreaZone(input.areaZone, errors);
   validateCleaner(input.cleaner, errors);
   validateCounterattack(input.counterattack, errors);
+  validateSurveillance(input.surveillance, errors);
   validateStars(input.stars, errors);
   validateScoreTargetConsistency(input, errors);
   return errors.length > 0
@@ -235,7 +284,7 @@ function validateStars(input: unknown, errors: string[]): void {
   }
   const ids = input.filter(isRecord).map((condition) => condition.id);
   const allowedIds: readonly LevelStarCondition['id'][] = [
-    'score_target', 'combo_target', 'accuracy_target', 'npc_hit_target', 'interaction_target', 'splash_multi_hit_target', 'area_zone_target', 'counter_dodge_target'
+    'score_target', 'combo_target', 'accuracy_target', 'npc_hit_target', 'interaction_target', 'splash_multi_hit_target', 'area_zone_target', 'counter_dodge_target', 'snapshot_avoid_target', 'recording_survive_target'
   ];
   if (new Set(ids).size !== 3 || !ids.includes('score_target') || ids.some((id) => !allowedIds.includes(id as LevelStarCondition['id']))) {
     errors.push('stars must define three unique conditions including score_target');
@@ -267,12 +316,14 @@ function validateStars(input: unknown, errors: string[]): void {
       errors.push('area_zone_target requires a mode and positive targetCount');
     } else if (condition.id === 'counter_dodge_target' && !isPositiveInteger(condition.targetCount)) {
       errors.push('counter_dodge_target.targetCount must be a positive integer');
+    } else if ((condition.id === 'snapshot_avoid_target' || condition.id === 'recording_survive_target') && !isPositiveInteger(condition.targetCount)) {
+      errors.push(`${condition.id}.targetCount must be a positive integer`);
     }
   }
 }
 
 function validateVisual(input: unknown, errors: string[]): void {
-  if (!isRecord(input) || !['day', 'evening', 'rainy', 'market_evening', 'windy_afternoon', 'cleanup_day', 'residential_alley'].includes(String(input.profile))) {
+  if (!isRecord(input) || !['day', 'evening', 'rainy', 'market_evening', 'windy_afternoon', 'cleanup_day', 'residential_alley', 'live_event'].includes(String(input.profile))) {
     errors.push('visual must define a supported profile');
     return;
   }
@@ -304,7 +355,7 @@ function validateEvents(input: unknown, duration: unknown, errors: string[]): vo
       event.triggerAtRemainingSeconds < 0 || typeof duration !== 'number' || event.triggerAtRemainingSeconds >= duration) {
       errors.push(`${event.id} must be once and trigger within the level duration`);
     }
-    if (!['spawnChannel', 'windChannel', 'presentationChannel', 'hazardChannel', 'cleanupChannel'].includes(String(event.channel)) ||
+    if (!['spawnChannel', 'windChannel', 'presentationChannel', 'hazardChannel', 'cleanupChannel', 'surveillanceChannel'].includes(String(event.channel)) ||
       !['replace', 'merge', 'exclusive'].includes(String(event.mergeStrategy)) || !Number.isInteger(event.priority)) {
       errors.push(`${event.id} must define channel, integer priority, and mergeStrategy`);
     }
@@ -322,6 +373,38 @@ function validateEvents(input: unknown, duration: unknown, errors: string[]): vo
       !Number.isInteger(event.counterattack.maxConcurrentTelegraphsBonus) || event.counterattack.maxConcurrentTelegraphsBonus < 0)) {
       errors.push(`${event.id} counterattack profile must define positive gap multiplier and non-negative telegraph bonus`);
     }
+    if (event.surveillance !== undefined && (!isRecord(event.surveillance) ||
+      !isPositiveNumber(event.surveillance.globalGapMultiplier) ||
+      typeof event.surveillance.maxConcurrentTelegraphsBonus !== 'number' ||
+      !Number.isInteger(event.surveillance.maxConcurrentTelegraphsBonus) || event.surveillance.maxConcurrentTelegraphsBonus < 0)) {
+      errors.push(`${event.id} surveillance profile must define positive gap multiplier and non-negative telegraph bonus`);
+    }
+  }
+}
+
+function validateSurveillance(input: unknown, errors: string[]): void {
+  if (input === undefined) return;
+  if (!isRecord(input) || input.schedulingPolicy !== 'source_id_alternating' || !Array.isArray(input.concealmentZones)) {
+    errors.push('surveillance must define source-id scheduling and concealment zones');
+    return;
+  }
+  for (const mode of ['snapshot', 'recording'] as const) {
+    const value = input[mode];
+    if (!isRecord(value) || !['authored_sweep', 'fixed_zone'].includes(String(value.targetMode)) ||
+      !Array.isArray(value.authoredCenters) || value.authoredCenters.length === 0 || value.authoredCenters.some((x) => typeof x !== 'number') ||
+      ['telegraphDurationSeconds', 'activeDurationSeconds', 'cooldownSeconds', 'targetHalfWidth', 'captureThreshold', 'alertPenalty', 'throwLockSeconds', 'invulnerabilitySeconds', 'throwingExposureMultiplier'].some((key) => !isPositiveNumber(value[key])) ||
+      typeof value.exposureRatePerSecond !== 'number' || value.exposureRatePerSecond < 0 ||
+      typeof value.exposureDecayPerSecond !== 'number' || value.exposureDecayPerSecond < 0) {
+      errors.push(`surveillance.${mode} must define bounded timing, authored zones, exposure, and penalties`);
+    }
+  }
+  const positiveIntegers = ['maxConcurrentTelegraphs', 'maxConcurrentSnapshotWindows', 'maxConcurrentRecordingWindows', 'queueLimit', 'viewPoolSize'];
+  if (positiveIntegers.some((key) => !isPositiveInteger(input[key])) ||
+    ['globalMinimumGapSeconds', 'minimumSafeWidth', 'alertMultiplier'].some((key) => !isPositiveNumber(input[key])) ||
+    typeof input.interruptionAlertPenalty !== 'number' || input.interruptionAlertPenalty < 0 ||
+    input.concealmentZones.some((zone) => !isRecord(zone) || typeof zone.id !== 'string' || typeof zone.x !== 'number' ||
+      !isPositiveNumber(zone.width) || !Array.isArray(zone.blocksModes))) {
+    errors.push('surveillance limits, safe space, concealment, and penalties must be bounded');
   }
 }
 

@@ -45,6 +45,14 @@ export function evaluateStars(definition: LevelDefinition, metrics: LevelMetrics
       const actual = metrics.counterattacksDodged ?? 0;
       return { id: condition.id, label: condition.label, passed: actual >= condition.targetCount, actual, target: condition.targetCount };
     }
+    if (condition.id === 'snapshot_avoid_target') {
+      const actual = metrics.snapshotsAvoided ?? 0;
+      return { id: condition.id, label: condition.label, passed: actual >= condition.targetCount, actual, target: condition.targetCount };
+    }
+    if (condition.id === 'recording_survive_target') {
+      const actual = metrics.recordingWindowsSurvived ?? 0;
+      return { id: condition.id, label: condition.label, passed: actual >= condition.targetCount, actual, target: condition.targetCount };
+    }
     return { id: condition.id, label: condition.label, passed: accuracy > condition.minimumExclusive, actual: accuracy, target: condition.minimumExclusive };
   });
   return { starsEarned: conditions.filter((condition) => condition.passed).length, conditions };

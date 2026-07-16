@@ -147,6 +147,18 @@ export const NPC_DEFINITIONS: readonly NPCDefinition[] = [
     tags: ['security'],
     abilities: [{ kind: 'security', observeSeconds: 1.4, searchSeconds: 2.4, alertPerSecond: 4 }],
     behavior: { kind: 'steady' }
+  },
+  {
+    id: 'streamer',
+    label: '直播主',
+    baseSpeed: 82,
+    scoreValue: 210,
+    color: 0x22d3ee,
+    width: 40,
+    height: 60,
+    tags: ['civilian', 'recording', 'streamer'],
+    abilities: [],
+    behavior: { kind: 'steady' }
   }
 ] as const;
 
@@ -166,6 +178,7 @@ export const NPC_SPAWN_CONFIG: NPCSpawnConfig = {
     { npcType: 'cleaner', weight: 1 },
     { npcType: 'angry_pedestrian', weight: 1 },
     { npcType: 'camera_pedestrian', weight: 1 },
+    { npcType: 'streamer', weight: 1 },
     { npcType: 'tourist', weight: 2 },
     { npcType: 'security_guard', weight: 1 }
   ],

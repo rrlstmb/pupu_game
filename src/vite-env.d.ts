@@ -19,6 +19,7 @@ import type { WindState } from './domain/wind/WindSystem';
 import type { CleanerSystemState } from './domain/poop/CleanerSystem';
 import type { CounterattackState } from './domain/counterattack/CounterattackSystem';
 import type { CounterattackViewStats } from './systems/counterattack/PhaserCounterattackSystem';
+import type { SurveillanceState } from './domain/surveillance/SurveillanceSystem';
 
 declare global {
   interface Window {
@@ -45,6 +46,8 @@ declare global {
       cleanerSystem?: CleanerSystemState;
       counterattackState?: CounterattackState;
       counterattackViewPool?: CounterattackViewStats;
+      surveillanceState?: SurveillanceState;
+      surveillanceViewPool?: { readonly active: number; readonly pooled: number; readonly created: number };
       isGameOver?: boolean;
       isPlayerInCover?: boolean;
       hudScoreText?: string;

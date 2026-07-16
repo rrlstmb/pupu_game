@@ -234,6 +234,14 @@ Depth constants live in `src/domain/layout/Depth.ts`.
 - `PhaserCounterattackSystem` pools warning/projectile views and contains no hit, Alert, star, or scheduling rules.
 - Pause stops the domain clock because GameScene returns before hazard updates. Retry and shutdown reconstruct/destroy domain instances, queue, penalties, metrics, and pooled views.
 
+## Surveillance
+
+- `src/domain/surveillance/SurveillanceSystem.ts` owns camera queues, authoritative rooftop exposure intervals, snapshot resolution, recording exposure/decay, concealment, capture/avoid dedupe, penalties, and metrics.
+- Photographer snapshots use authored sweep centers and resolve once after telegraph. Streamer recordings accumulate exposure only during a bounded active window; neither mode reads sprite pixels, camera zoom, or projectile state.
+- Scheduling is bounded by per-mode active limits, telegraph count, queue size, global gap, per-source ownership, and minimum uncovered rooftop width.
+- `surveillanceChannel` is independent from spawn, wind, cleanup, hazard, and presentation channels. The Level 8 climax changes only camera cadence/capacity.
+- `PhaserSurveillanceSystem` renders and pools SNAP/REC warnings from the same target interval and exposure value used by domain rules. Retry and shutdown rebuild domain state and dispose all views.
+
 - Score calculation lives in pure domain code under `src/domain/score`.
 - Score rules live in `src/data/scoreRules.ts` and include base scores, precision grades, combo thresholds, repeat-hit multipliers, miss penalty, and default phase multipliers.
 - The Phase 07 formula is base score x poop adaptation x combo multiplier x precision multiplier x risk multiplier x repeat-hit multiplier + special event score.

@@ -11,6 +11,7 @@ export const NPC_POOP_INTERACTIONS: readonly NPCPoopInteraction[] = [
   { npcType: 'cleaner', poopType: 'stink_poop', outcome: 'weak', alertDelta: -2, scoreDelta: -20, tags: ['cleaner_counters_zone'] },
   { npcType: 'angry_pedestrian', poopType: 'normal_poop', outcome: 'risky', alertDelta: 4, scoreDelta: 20, tags: ['retaliation_risk'] },
   { npcType: 'camera_pedestrian', poopType: 'sticky_poop', outcome: 'effective', alertDelta: -3, scoreDelta: 25, tags: ['interrupt_recording'] },
+  { npcType: 'streamer', poopType: 'sticky_poop', outcome: 'effective', alertDelta: -2, scoreDelta: 30, tags: ['interrupt_recording'] },
   { npcType: 'camera_pedestrian', poopType: 'golden_poop', outcome: 'effective', alertDelta: 6, scoreDelta: 120, tags: ['viral_gold'] },
   { npcType: 'tourist', poopType: 'splash_poop', outcome: 'effective', alertDelta: 2, scoreDelta: 45, tags: ['group_cluster'] },
   { npcType: 'tourist', poopType: 'split_poop', outcome: 'effective', alertDelta: 3, scoreDelta: 35, tags: ['spread_cluster'] },

@@ -6,17 +6,17 @@ Codex must not set any phase to `PASS`.
 
 ## Current Phase
 
-- Phase: 18
-- Name: Level 7 - Alley counterattack
+- Phase: 19
+- Name: Level 8 - Citywide livestream
 - Status: READY_FOR_REVIEW
 - Updated: 2026-07-16
 
 ## Current Audit
 
-- Audit: Prompt 17 - Level 6 Cleanup Battle
+- Audit: Prompt 18 - Level 7 Alley Counterattack
 - Status: PASS (user-provided prerequisite)
-- Evidence: `docs/evidence/PHASE_17.md`
-- Prompt 19 remains `NOT_STARTED`.
+- Evidence: `docs/evidence/PHASE_18.md`
+- Prompt 20 remains `NOT_STARTED`.
 
 ## Audit History
 
@@ -173,7 +173,7 @@ Codex must not set any phase to `PASS`.
 | 16 | READY_FOR_REVIEW | `docs/evidence/PHASE_16.md` |
 | 17 | READY_FOR_REVIEW | `docs/evidence/PHASE_17.md` |
 | 18 | READY_FOR_REVIEW | `docs/evidence/PHASE_18.md` |
-| 19 | NOT_STARTED | |
+| 19 | READY_FOR_REVIEW | `docs/evidence/PHASE_19.md` |
 | 20 | NOT_STARTED | |
 | 21 | NOT_STARTED | |
 | 22 | NOT_STARTED | |
