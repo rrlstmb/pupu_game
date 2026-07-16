@@ -86,7 +86,13 @@ describe('LevelDirector', () => {
       guardObservationsStarted: 0, guardObservationsAvoided: 0, searchlightWindowsSurvived: 0,
       securityDetections: 0, detectionsWhileExposed: 0, throwsWhileConcealed: 0,
       goldenPoopUsed: 0, goldenPoopHits: 0, goldenPoopScore: 0, goldenPoopRemaining: 0,
-      scoreAfterBlockade: 0, blockadeTriggered: 0, maximumSecurityDetectionProgress: 0
+      scoreAfterBlockade: 0, blockadeTriggered: 0, maximumSecurityDetectionProgress: 0,
+      phase1Score: 0, phase1UniqueInteractionTypes: 0, paradeWaveCompleted: 0,
+      cameraEscortInterruptions: 0, largeUmbrellaBreaks: 0, bossStickySlows: 0,
+      bossProtectionMistakes: 0, phaseTransitionsCompleted: 0,
+      finalGoldenGranted: 0, finalGoldenUsed: 0, finalGoldenMisses: 0, finalGoldenHits: 0,
+      finalGoldenRemaining: 0, finalWindowAttempts: 0, finalEncounterCompleted: 0,
+      maximumAlert: 0, completionTime: 0
     });
     expect(reset.result).toBeUndefined();
     expect(reset.remainingSeconds).toBe(90);

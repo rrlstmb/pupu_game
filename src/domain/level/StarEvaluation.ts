@@ -61,6 +61,14 @@ export function evaluateStars(definition: LevelDefinition, metrics: LevelMetrics
       const actual = metrics.goldenPoopHits ?? 0;
       return { id: condition.id, label: condition.label, passed: actual >= condition.targetCount, actual, target: condition.targetCount };
     }
+    if (condition.id === 'boss_final_hit') {
+      const actual = metrics.finalGoldenHits ?? 0;
+      return { id: condition.id, label: condition.label, passed: actual >= 1, actual, target: 1 };
+    }
+    if (condition.id === 'boss_detection_limit') {
+      const actual = (metrics.securityDetections ?? 0) + (metrics.snapshotCaptures ?? 0) + (metrics.recordingCaptures ?? 0);
+      return { id: condition.id, label: condition.label, passed: actual <= condition.maximum, actual, target: condition.maximum };
+    }
     return { id: condition.id, label: condition.label, passed: accuracy > condition.minimumExclusive, actual: accuracy, target: condition.minimumExclusive };
   });
   return { starsEarned: conditions.filter((condition) => condition.passed).length, conditions };

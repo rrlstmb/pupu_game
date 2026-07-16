@@ -21,6 +21,7 @@ import type { CounterattackState } from './domain/counterattack/CounterattackSys
 import type { CounterattackViewStats } from './systems/counterattack/PhaserCounterattackSystem';
 import type { SurveillanceState } from './domain/surveillance/SurveillanceSystem';
 import type { SecurityState } from './domain/security/SecuritySystem';
+import type { BossEncounterState } from './domain/boss/BossPhaseStateMachine';
 
 declare global {
   interface Window {
@@ -51,6 +52,7 @@ declare global {
       surveillanceViewPool?: { readonly active: number; readonly pooled: number; readonly created: number };
       securityState?: SecurityState;
       securityViewPool?: { readonly active: number; readonly pooled: number; readonly created: number; readonly blockadeViews: number };
+      bossState?: BossEncounterState;
       isGameOver?: boolean;
       isPlayerInCover?: boolean;
       hudScoreText?: string;
@@ -102,6 +104,7 @@ declare global {
       setNPCX?: (npcId: number, x: number) => void;
       clearNPCSandbox?: (disableAutoSpawn?: boolean) => void;
       primeCounterattackSandbox?: (npcIds: readonly number[]) => void;
+      primeBossPhaseOneSandbox?: () => void;
     };
   }
 }

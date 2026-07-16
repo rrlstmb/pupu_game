@@ -13,7 +13,7 @@ export type LevelSpawnDefinition = {
 };
 
 export type LevelVisualDefinition = {
-  readonly profile: 'day' | 'evening' | 'rainy' | 'market_evening' | 'windy_afternoon' | 'cleanup_day' | 'residential_alley' | 'live_event' | 'night_patrol';
+  readonly profile: 'day' | 'evening' | 'rainy' | 'market_evening' | 'windy_afternoon' | 'cleanup_day' | 'residential_alley' | 'live_event' | 'night_patrol' | 'clean_city';
   readonly skylineColor: number;
   readonly alleyColor: number;
   readonly rooftopColor: number;
@@ -53,7 +53,77 @@ export type BounceSurfaceDefinition = {
   readonly bounceCoefficient: number;
 };
 
-export type EventChannel = 'spawnChannel' | 'windChannel' | 'presentationChannel' | 'hazardChannel' | 'cleanupChannel' | 'surveillanceChannel' | 'securityChannel' | 'blockadeChannel';
+export type EventChannel = 'spawnChannel' | 'windChannel' | 'presentationChannel' | 'hazardChannel' | 'cleanupChannel' | 'surveillanceChannel' | 'securityChannel' | 'blockadeChannel' | 'bossChannel';
+
+export type BossProtectionType = 'media_entourage' | 'large_umbrella' | 'movement_barrier';
+export type BossProtectionDefinition = {
+  readonly id: string;
+  readonly type: BossProtectionType;
+  readonly dependsOn?: string;
+  readonly requiredInteraction: 'camera_interrupt' | 'jumbo_or_bounce' | 'sticky_slow';
+  readonly requiredCount: number;
+  readonly feedbackLocked: string;
+  readonly feedbackBroken: string;
+};
+export type BossPhaseDefinition = {
+  readonly id: 'phase_1_parade' | 'phase_2_protected_boss' | 'phase_3_rooftop_lockdown';
+  readonly title: string;
+  readonly tutorialMessage: string;
+  readonly phaseScoreTarget?: number;
+  readonly uniqueInteractionTarget?: number;
+  readonly transitionSeconds: number;
+  readonly timeoutSeconds: number;
+  readonly spawn: LevelSpawnDefinition;
+};
+export type BossMovementProfile = {
+  readonly id: string;
+  readonly speed: number;
+  readonly minX: number;
+  readonly maxX: number;
+  readonly pauseSeconds: number;
+  readonly dashWarningSeconds: number;
+  readonly dashDurationSeconds: number;
+  readonly recoverySeconds: number;
+  readonly hitWindowSeconds: number;
+};
+export type FinalGoldenPoopDefinition = {
+  readonly grantedOnPhaseEnter: number;
+  readonly maxAttempts: number;
+  readonly reservedForFinalPhase: true;
+  readonly resetOnRetry: true;
+  readonly successInteractionTag: string;
+};
+export type FinalVulnerableWindowDefinition = {
+  readonly warningSeconds: number;
+  readonly activeSeconds: number;
+  readonly recoverySeconds: number;
+  readonly repeatLimit: number;
+  readonly minimumAvailableHitWidth: number;
+};
+export type FinalEncounterSafetyDefinition = {
+  readonly playerBounds: { readonly start: number; readonly end: number };
+  readonly blockedStages: readonly { readonly id: string; readonly warningSeconds: number; readonly intervals: readonly { readonly start: number; readonly end: number }[] }[];
+  readonly coverIntervals: readonly { readonly start: number; readonly end: number }[];
+  readonly bossHitIntervals: readonly { readonly start: number; readonly end: number }[];
+  readonly minimumReachableWidth: number;
+  readonly minimumSafeWidth: number;
+  readonly minimumThrowPositionWidth: number;
+  readonly minimumBossHitPositionWidth: number;
+};
+export type BossEncounterDefinition = {
+  readonly id: string;
+  readonly displayName: string;
+  readonly phases: readonly [BossPhaseDefinition, BossPhaseDefinition, BossPhaseDefinition];
+  readonly protections: readonly BossProtectionDefinition[];
+  readonly movementProfiles: readonly BossMovementProfile[];
+  readonly bossY: number;
+  readonly bossWidth: number;
+  readonly bossHeight: number;
+  readonly finalGolden: FinalGoldenPoopDefinition;
+  readonly finalWindow: FinalVulnerableWindowDefinition;
+  readonly safety: FinalEncounterSafetyDefinition;
+  readonly hazardConcurrencyBudget: number;
+};
 
 export type SecurityCoverDefinition = {
   readonly id: string;
@@ -160,6 +230,7 @@ export type SurveillanceEventDefinition = {
 
 export type SecurityEventDefinition = { readonly detectionRateMultiplier: number };
 export type BlockadeEventDefinition = { readonly activate: true };
+export type BossEventDefinition = { readonly command: 'parade_wave' | 'boss_arrival' | 'rooftop_lockdown' };
 
 export type CleanerRules = {
   readonly detectionRadius: number;
@@ -220,6 +291,7 @@ export type LevelTimedEvent = {
   readonly surveillance?: SurveillanceEventDefinition;
   readonly security?: SecurityEventDefinition;
   readonly blockade?: BlockadeEventDefinition;
+  readonly boss?: BossEventDefinition;
 };
 
 export type LevelStarCondition =
@@ -234,7 +306,9 @@ export type LevelStarCondition =
   | { readonly id: 'snapshot_avoid_target'; readonly label: string; readonly targetCount: number }
   | { readonly id: 'recording_survive_target'; readonly label: string; readonly targetCount: number }
   | { readonly id: 'security_avoid_target'; readonly label: string; readonly targetCount: number }
-  | { readonly id: 'golden_hit_target'; readonly label: string; readonly targetCount: number };
+  | { readonly id: 'golden_hit_target'; readonly label: string; readonly targetCount: number }
+  | { readonly id: 'boss_final_hit'; readonly label: string; readonly targetCount: 1 }
+  | { readonly id: 'boss_detection_limit'; readonly label: string; readonly maximum: number };
 
 export type LevelDefinition = {
   readonly id: string;
@@ -257,6 +331,8 @@ export type LevelDefinition = {
   readonly security?: SecurityDefinition;
   readonly blockade?: BlockadeDefinition;
   readonly poopStockOverrides?: Readonly<Partial<Record<PoopType, number | 'infinite'>>>;
+  readonly completionMode?: 'score' | 'boss_final_hit';
+  readonly bossEncounter?: BossEncounterDefinition;
   readonly stars: readonly LevelStarCondition[];
 };
 
@@ -307,6 +383,7 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
   validateSecurity(input.security, errors);
   validateBlockade(input.blockade, errors);
   validatePoopStockOverrides(input.poopStockOverrides, input.availablePoopTypes, errors);
+  validateBossEncounter(input.bossEncounter, input.completionMode, errors);
   validateStars(input.stars, errors);
   validateScoreTargetConsistency(input, errors);
   return errors.length > 0
@@ -370,7 +447,7 @@ function validateStars(input: unknown, errors: string[]): void {
   }
   const ids = input.filter(isRecord).map((condition) => condition.id);
   const allowedIds: readonly LevelStarCondition['id'][] = [
-    'score_target', 'combo_target', 'accuracy_target', 'npc_hit_target', 'interaction_target', 'splash_multi_hit_target', 'area_zone_target', 'counter_dodge_target', 'snapshot_avoid_target', 'recording_survive_target', 'security_avoid_target', 'golden_hit_target'
+    'score_target', 'combo_target', 'accuracy_target', 'npc_hit_target', 'interaction_target', 'splash_multi_hit_target', 'area_zone_target', 'counter_dodge_target', 'snapshot_avoid_target', 'recording_survive_target', 'security_avoid_target', 'golden_hit_target', 'boss_final_hit', 'boss_detection_limit'
   ];
   if (new Set(ids).size !== 3 || !ids.includes('score_target') || ids.some((id) => !allowedIds.includes(id as LevelStarCondition['id']))) {
     errors.push('stars must define three unique conditions including score_target');
@@ -406,12 +483,39 @@ function validateStars(input: unknown, errors: string[]): void {
       errors.push(`${condition.id}.targetCount must be a positive integer`);
     } else if ((condition.id === 'security_avoid_target' || condition.id === 'golden_hit_target') && !isPositiveInteger(condition.targetCount)) {
       errors.push(`${condition.id}.targetCount must be a positive integer`);
+    } else if (condition.id === 'boss_final_hit' && condition.targetCount !== 1) {
+      errors.push('boss_final_hit.targetCount must be 1');
+    } else if (condition.id === 'boss_detection_limit' && (!Number.isInteger(condition.maximum) || Number(condition.maximum) < 0)) {
+      errors.push('boss_detection_limit.maximum must be a non-negative integer');
     }
   }
 }
 
+function validateBossEncounter(input: unknown, completionMode: unknown, errors: string[]): void {
+  if (input === undefined) {
+    if (completionMode === 'boss_final_hit') errors.push('boss_final_hit completion requires bossEncounter');
+    return;
+  }
+  if (!isRecord(input) || completionMode !== 'boss_final_hit') {
+    errors.push('bossEncounter requires boss_final_hit completion mode');
+    return;
+  }
+  if (!Array.isArray(input.phases) || input.phases.length !== 3) errors.push('bossEncounter.phases must contain exactly three phases');
+  if (!Array.isArray(input.protections) || input.protections.length !== 3) errors.push('bossEncounter.protections must contain exactly three gates');
+  if (!Array.isArray(input.movementProfiles) || input.movementProfiles.length < 2) errors.push('bossEncounter requires movement profiles');
+  if (!isRecord(input.finalGolden) || !isPositiveInteger(input.finalGolden.grantedOnPhaseEnter) || input.finalGolden.reservedForFinalPhase !== true) {
+    errors.push('bossEncounter.finalGolden must define finite reserved attempts');
+  }
+  if (!isRecord(input.finalWindow) || !isPositiveNumber(input.finalWindow.activeSeconds) || !isPositiveInteger(input.finalWindow.repeatLimit)) {
+    errors.push('bossEncounter.finalWindow must define active duration and repeat limit');
+  }
+  if (!isRecord(input.safety) || !Array.isArray(input.safety.blockedStages) || input.safety.blockedStages.length === 0) {
+    errors.push('bossEncounter.safety must define blocked stages');
+  }
+}
+
 function validateVisual(input: unknown, errors: string[]): void {
-  if (!isRecord(input) || !['day', 'evening', 'rainy', 'market_evening', 'windy_afternoon', 'cleanup_day', 'residential_alley', 'live_event', 'night_patrol'].includes(String(input.profile))) {
+  if (!isRecord(input) || !['day', 'evening', 'rainy', 'market_evening', 'windy_afternoon', 'cleanup_day', 'residential_alley', 'live_event', 'night_patrol', 'clean_city'].includes(String(input.profile))) {
     errors.push('visual must define a supported profile');
     return;
   }
@@ -443,7 +547,7 @@ function validateEvents(input: unknown, duration: unknown, errors: string[]): vo
       event.triggerAtRemainingSeconds < 0 || typeof duration !== 'number' || event.triggerAtRemainingSeconds >= duration) {
       errors.push(`${event.id} must be once and trigger within the level duration`);
     }
-    if (!['spawnChannel', 'windChannel', 'presentationChannel', 'hazardChannel', 'cleanupChannel', 'surveillanceChannel', 'securityChannel', 'blockadeChannel'].includes(String(event.channel)) ||
+    if (!['spawnChannel', 'windChannel', 'presentationChannel', 'hazardChannel', 'cleanupChannel', 'surveillanceChannel', 'securityChannel', 'blockadeChannel', 'bossChannel'].includes(String(event.channel)) ||
       !['replace', 'merge', 'exclusive'].includes(String(event.mergeStrategy)) || !Number.isInteger(event.priority)) {
       errors.push(`${event.id} must define channel, integer priority, and mergeStrategy`);
     }

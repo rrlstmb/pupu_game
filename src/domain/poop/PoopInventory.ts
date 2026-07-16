@@ -40,6 +40,10 @@ export function selectPoopByIndex(state: PoopInventoryState, selectedIndex: numb
   return { ...state, selectedIndex: clampedIndex };
 }
 
+export function setPoopStock(state: PoopInventoryState, poopType: PoopType, stock: number | 'infinite'): PoopInventoryState {
+  return { ...state, slots: state.slots.map((slot) => slot.poopType === poopType ? { ...slot, stock } : slot) };
+}
+
 export function updatePoopCooldowns(state: PoopInventoryState, deltaSeconds: number): PoopInventoryState {
   const delta = Math.max(0, deltaSeconds);
   return {

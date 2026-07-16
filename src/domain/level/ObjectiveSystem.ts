@@ -39,6 +39,23 @@ export type LevelMetrics = {
   readonly scoreAfterBlockade?: number;
   readonly blockadeTriggered?: number;
   readonly maximumSecurityDetectionProgress?: number;
+  readonly phase1Score?: number;
+  readonly phase1UniqueInteractionTypes?: number;
+  readonly paradeWaveCompleted?: number;
+  readonly cameraEscortInterruptions?: number;
+  readonly largeUmbrellaBreaks?: number;
+  readonly bossStickySlows?: number;
+  readonly bossProtectionMistakes?: number;
+  readonly phaseTransitionsCompleted?: number;
+  readonly finalGoldenGranted?: number;
+  readonly finalGoldenUsed?: number;
+  readonly finalGoldenMisses?: number;
+  readonly finalGoldenHits?: number;
+  readonly finalGoldenRemaining?: number;
+  readonly finalWindowAttempts?: number;
+  readonly finalEncounterCompleted?: number;
+  readonly maximumAlert?: number;
+  readonly completionTime?: number;
 };
 
 export type ObjectiveState = {

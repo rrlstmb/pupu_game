@@ -4,7 +4,7 @@ import { evaluateObjective, hitAccuracy, type LevelMetrics } from './ObjectiveSy
 import { evaluateStars, type StarEvaluation } from './StarEvaluation';
 
 export type LevelPhase = 'countdown' | 'running' | 'paused' | 'settled';
-export type LevelOutcome = 'success' | 'timeout' | 'caught';
+export type LevelOutcome = 'success' | 'timeout' | 'caught' | 'boss_failed';
 
 export type LevelResult = LevelMetrics & {
   readonly sessionId: string;
@@ -71,7 +71,13 @@ export function createLevelSession(definition: LevelDefinition, attempt = 1): Le
       securityDetections: 0, detectionsWhileExposed: 0, throwsWhileConcealed: 0,
       goldenPoopUsed: 0, goldenPoopHits: 0, goldenPoopScore: 0,
       goldenPoopRemaining: definition.poopStockOverrides?.golden_poop === 'infinite' ? 0 : definition.poopStockOverrides?.golden_poop ?? 0,
-      scoreAfterBlockade: 0, blockadeTriggered: 0, maximumSecurityDetectionProgress: 0
+      scoreAfterBlockade: 0, blockadeTriggered: 0, maximumSecurityDetectionProgress: 0,
+      phase1Score: 0, phase1UniqueInteractionTypes: 0, paradeWaveCompleted: 0,
+      cameraEscortInterruptions: 0, largeUmbrellaBreaks: 0, bossStickySlows: 0,
+      bossProtectionMistakes: 0, phaseTransitionsCompleted: 0,
+      finalGoldenGranted: 0, finalGoldenUsed: 0, finalGoldenMisses: 0, finalGoldenHits: 0,
+      finalGoldenRemaining: 0, finalWindowAttempts: 0, finalEncounterCompleted: 0,
+      maximumAlert: 0, completionTime: 0
     },
     completionCount: 0,
     triggeredEventIds: []
@@ -145,14 +151,40 @@ export function updateLevelMetrics(session: LevelSession, metrics: Partial<Level
       goldenPoopRemaining: metrics.goldenPoopRemaining ?? session.metrics.goldenPoopRemaining,
       scoreAfterBlockade: metrics.scoreAfterBlockade ?? session.metrics.scoreAfterBlockade,
       blockadeTriggered: metrics.blockadeTriggered ?? session.metrics.blockadeTriggered,
-      maximumSecurityDetectionProgress: Math.max(session.metrics.maximumSecurityDetectionProgress ?? 0, metrics.maximumSecurityDetectionProgress ?? 0)
+      maximumSecurityDetectionProgress: Math.max(session.metrics.maximumSecurityDetectionProgress ?? 0, metrics.maximumSecurityDetectionProgress ?? 0),
+      phase1Score: metrics.phase1Score ?? session.metrics.phase1Score,
+      phase1UniqueInteractionTypes: metrics.phase1UniqueInteractionTypes ?? session.metrics.phase1UniqueInteractionTypes,
+      paradeWaveCompleted: metrics.paradeWaveCompleted ?? session.metrics.paradeWaveCompleted,
+      cameraEscortInterruptions: metrics.cameraEscortInterruptions ?? session.metrics.cameraEscortInterruptions,
+      largeUmbrellaBreaks: metrics.largeUmbrellaBreaks ?? session.metrics.largeUmbrellaBreaks,
+      bossStickySlows: metrics.bossStickySlows ?? session.metrics.bossStickySlows,
+      bossProtectionMistakes: metrics.bossProtectionMistakes ?? session.metrics.bossProtectionMistakes,
+      phaseTransitionsCompleted: metrics.phaseTransitionsCompleted ?? session.metrics.phaseTransitionsCompleted,
+      finalGoldenGranted: metrics.finalGoldenGranted ?? session.metrics.finalGoldenGranted,
+      finalGoldenUsed: metrics.finalGoldenUsed ?? session.metrics.finalGoldenUsed,
+      finalGoldenMisses: metrics.finalGoldenMisses ?? session.metrics.finalGoldenMisses,
+      finalGoldenHits: metrics.finalGoldenHits ?? session.metrics.finalGoldenHits,
+      finalGoldenRemaining: metrics.finalGoldenRemaining ?? session.metrics.finalGoldenRemaining,
+      finalWindowAttempts: metrics.finalWindowAttempts ?? session.metrics.finalWindowAttempts,
+      finalEncounterCompleted: metrics.finalEncounterCompleted ?? session.metrics.finalEncounterCompleted,
+      maximumAlert: Math.max(session.metrics.maximumAlert ?? 0, metrics.maximumAlert ?? 0),
+      completionTime: metrics.completionTime ?? session.metrics.completionTime
     }
   };
-  return evaluateObjective(updated.definition, updated.metrics).complete ? settleLevel(updated, 'success') : updated;
+  return updated.definition.completionMode !== 'boss_final_hit' && evaluateObjective(updated.definition, updated.metrics).complete
+    ? settleLevel(updated, 'success') : updated;
 }
 
 export function failLevelCaught(session: LevelSession): LevelSession {
   return settleLevel(session, 'caught');
+}
+
+export function completeBossLevel(session: LevelSession): LevelSession {
+  return session.definition.completionMode === 'boss_final_hit' ? settleLevel(session, 'success') : session;
+}
+
+export function failBossLevel(session: LevelSession): LevelSession {
+  return session.definition.completionMode === 'boss_final_hit' ? settleLevel(session, 'boss_failed') : session;
 }
 
 export function toggleLevelPause(session: LevelSession): LevelSession {

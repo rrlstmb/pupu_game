@@ -6,17 +6,17 @@ Codex must not set any phase to `PASS`.
 
 ## Current Phase
 
-- Phase: 20
-- Name: Level 9 - Security patrol
+- Phase: 21
+- Name: Level 10 - Clean City Day and Cleanliness Influencer Boss
 - Status: READY_FOR_REVIEW
-- Updated: 2026-07-16
+- Updated: 2026-07-17
 
 ## Current Audit
 
-- Audit: Prompt 19 - Level 8 Citywide Livestream
+- Audit: Prompt 20 - Level 9 Security Patrol
 - Status: PASS (user-provided prerequisite)
-- Evidence: `docs/evidence/PHASE_19.md`
-- Prompt 21 remains `NOT_STARTED`.
+- Evidence: `docs/evidence/PHASE_20.md`
+- Prompt 22 remains `NOT_STARTED`.
 
 ## Audit History
 
@@ -175,7 +175,7 @@ Codex must not set any phase to `PASS`.
 | 18 | READY_FOR_REVIEW | `docs/evidence/PHASE_18.md` |
 | 19 | READY_FOR_REVIEW | `docs/evidence/PHASE_19.md` |
 | 20 | READY_FOR_REVIEW | `docs/evidence/PHASE_20.md` |
-| 21 | NOT_STARTED | |
+| 21 | READY_FOR_REVIEW | `docs/evidence/PHASE_21.md` |
 | 22 | NOT_STARTED | |
 | 23 | NOT_STARTED | |
 | 24 | NOT_STARTED | |

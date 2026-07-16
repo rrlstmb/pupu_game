@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import type { BossEncounterState } from '../../src/domain/boss/BossPhaseStateMachine';
 
 test('loads menu and enters the empty game scene without console errors', async ({ page }) => {
   const consoleErrors: string[] = [];
@@ -991,7 +992,13 @@ test('phase 12 runs Level 1 through pause, timeout result, and deterministic cle
     guardObservationsStarted: 0, guardObservationsAvoided: 0, searchlightWindowsSurvived: 0,
     securityDetections: 0, detectionsWhileExposed: 0, throwsWhileConcealed: 0,
     goldenPoopUsed: 0, goldenPoopHits: 0, goldenPoopScore: 0, goldenPoopRemaining: 0,
-    scoreAfterBlockade: 0, blockadeTriggered: 0, maximumSecurityDetectionProgress: 0
+    scoreAfterBlockade: 0, blockadeTriggered: 0, maximumSecurityDetectionProgress: 0,
+    phase1Score: 0, phase1UniqueInteractionTypes: 0, paradeWaveCompleted: 0,
+    cameraEscortInterruptions: 0, largeUmbrellaBreaks: 0, bossStickySlows: 0,
+    bossProtectionMistakes: 0, phaseTransitionsCompleted: 0,
+    finalGoldenGranted: 0, finalGoldenUsed: 0, finalGoldenMisses: 0, finalGoldenHits: 0,
+    finalGoldenRemaining: 0, finalWindowAttempts: 0, finalEncounterCompleted: 0,
+    maximumAlert: 0, completionTime: 0
   });
   expect((await npcSpawner(page)).npcs).toHaveLength(0);
   expect((await projectileSystem(page)).projectiles).toHaveLength(0);
@@ -1436,6 +1443,90 @@ test('phase 20 level 9 combines security cover, throw exposure, golden stock, an
   expect(consoleErrors).toEqual([]);
 });
 
+test('phase 21 level 10 completes the three-phase boss through a legal golden landing hit', async ({ page }) => {
+  test.setTimeout(90_000);
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+  page.on('pageerror', (error) => consoleErrors.push(error.message));
+  await page.goto('/');
+  await expect(page.locator('canvas')).toHaveAttribute('data-game-ready', 'true');
+  const box = await page.locator('canvas').boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(box!.x + box!.width * (1040 / 1280), box!.y + box!.height * (475 / 720));
+  await startLevelForTest(page);
+  expect((await levelSession(page)).definition.id).toBe('level_10');
+  await expect.poll(async () => (await bossState(page)).phase).toBe('phase_1_parade');
+
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.primeBossPhaseOneSandbox?.());
+  await expect.poll(async () => (await bossState(page)).phase).toBe('transition_1');
+  await page.waitForTimeout(1_500);
+  expect(consoleErrors).toEqual([]);
+  await expect.poll(async () => (await bossState(page)).phase, { timeout: 5_000 }).toBe('phase_2_protected_boss');
+  expect((await bossState(page)).processedTransitionTokens).toHaveLength(3);
+
+  await page.evaluate(() => {
+    const debug = window.__SHIMING_BIDA_DEBUG__;
+    debug?.clearNPCSandbox?.(true);
+    debug?.spawnNPCSandbox?.('camera_pedestrian', 950, 'front_road');
+  });
+  await expect.poll(async () => (await surveillanceState(page)).instances.length, { timeout: 8_000 }).toBeGreaterThan(0);
+  const cameraNpc = (await npcSpawner(page)).npcs.find((npc) => npc.definitionId === 'camera_pedestrian');
+  expect(cameraNpc).toBeDefined();
+  await debugMinimumRepeatThrow(page, cameraNpc!.id);
+  await expect.poll(async () => (await bossState(page)).protections[0].state, { timeout: 12_000 }).toBe('broken');
+  await page.screenshot({ path: 'docs/evidence/phase-21-boss-protections.png', fullPage: true });
+
+  await throwAtBoss(page, 4, 0.70);
+  await expect.poll(async () => (await bossState(page)).protections[1].state, { timeout: 12_000 }).toBe('broken');
+  await throwAtBoss(page, 2, 0.70);
+  await expect.poll(async () => (await projectileSystem(page)).projectiles.length, { timeout: 12_000 }).toBe(0);
+  if ((await bossState(page)).protections[2].state !== 'broken') await throwAtBoss(page, 2, 0.70);
+  await expect.poll(async () => (await projectileSystem(page)).projectiles.length, { timeout: 12_000 }).toBe(0);
+  if ((await bossState(page)).protections[2].state !== 'broken') {
+    throw new Error(JSON.stringify({ boss: await bossState(page), landing: await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.actualLanding) }));
+  }
+  await expect.poll(async () => (await bossState(page)).finalGoldenGranted, { timeout: 5_000 }).toBe(2);
+  expect(new Set((await bossState(page)).processedTransitionTokens).size).toBe((await bossState(page)).processedTransitionTokens.length);
+  expect(await poopStock(page, 'golden_poop')).toBe(2);
+  await expect.poll(async () => (await bossState(page)).blockedStageCount, { timeout: 8_000 }).toBe(2);
+  await expect.poll(async () => (await bossState(page)).finalWindowState, { timeout: 5_000 }).toBe('active');
+  await page.screenshot({ path: 'docs/evidence/phase-21-final-safe-space.png', fullPage: true });
+
+  await throwAtBoss(page, 8, 0.70);
+  await expect.poll(async () => (await bossState(page)).phase, { timeout: 12_000 }).toBe('completed');
+  await expect.poll(async () => (await levelSession(page)).phase).toBe('settled');
+  const completed = await levelSession(page);
+  expect(completed.result?.outcome).toBe('success');
+  expect(completed.metrics.finalGoldenHits).toBe(1);
+  expect((await bossState(page)).completionCount).toBe(1);
+  await expect.poll(() => hudResultText(page)).toContain('任務成功');
+  await page.screenshot({ path: 'docs/evidence/phase-21-final-golden-hit.png', fullPage: true });
+  expect(consoleErrors).toEqual([]);
+});
+
+test('phase 21 level 10 failure and retry reset encounter state and final inventory', async ({ page }) => {
+  test.setTimeout(45_000);
+  await page.goto('/');
+  await expect(page.locator('canvas')).toHaveAttribute('data-game-ready', 'true');
+  const canvas = page.locator('canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(box!.x + box!.width * (1040 / 1280), box!.y + box!.height * (475 / 720));
+  await startLevelForTest(page);
+  await expect.poll(async () => (await bossState(page)).phase).toBe('phase_1_parade');
+  await advanceLevelTime(page, 240);
+  await expect.poll(async () => (await levelSession(page)).phase).toBe('settled');
+  expect((await levelSession(page)).completionCount).toBe(1);
+  await clickResultRetry(page, canvas);
+  await startLevelForTest(page);
+  const reset = await bossState(page);
+  expect(reset).toMatchObject({ phase: 'phase_1_parade', finalGoldenGranted: 0, finalGoldenRemaining: 0, completionCount: 0, failureCount: 0 });
+  expect(reset.processedInteractionTokens).toEqual([]);
+  expect(reset.blockedStageCount).toBe(0);
+  expect(await poopStock(page, 'golden_poop')).toBe(0);
+  expect(await inputListenerCount(page)).toBe(6);
+});
+
 async function surveillanceState(page: Page): Promise<{
   instances: Array<{ id: string; sourceNpcId: number; mode: string; state: string; exposure: number; targetZone: { centerX: number; halfWidth: number } }>;
   queuedSourceIds: number[];
@@ -1452,6 +1543,36 @@ async function surveillanceState(page: Page): Promise<{
       invulnerabilitySeconds: state.invulnerabilitySeconds, stats: { ...state.stats }
     };
   });
+}
+
+async function bossState(page: Page): Promise<BossEncounterState> {
+  return page.evaluate(() => {
+    const state = window.__SHIMING_BIDA_DEBUG__?.bossState;
+    if (!state) throw new Error('Boss encounter debug state is unavailable');
+    return state;
+  });
+}
+
+async function throwAtBoss(page: Page, arsenalSlot: number, chargePower: number): Promise<void> {
+  await selectArsenalSlot(page, arsenalSlot);
+  await expect.poll(async () => (await poopInventory(page)).cooldownRemainingSeconds, { timeout: 8_000 }).toBe(0);
+  const holdMs = 80 + chargePower * 1_120;
+  await page.evaluate(async (duration) => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true }));
+    await new Promise((resolve) => window.setTimeout(resolve, duration));
+    const debug = window.__SHIMING_BIDA_DEBUG__;
+    const boss = debug?.bossState;
+    const power = debug?.chargeState?.chargePower ?? 0.7;
+    if (!boss) throw new Error('Boss state unavailable during controlled throw');
+    const travelDuration = 0.65 + (1.55 - 0.65) * power;
+    const min = 300; const max = 880; const span = max - min;
+    const unfolded = boss.movementDirection === 1
+      ? boss.bossX - min + 82 * travelDuration
+      : span * 2 - (boss.bossX - min) + 82 * travelDuration;
+    const cycle = ((unfolded % (span * 2)) + span * 2) % (span * 2);
+    debug?.setPlayerX?.(cycle <= span ? min + cycle : max - (cycle - span));
+    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space', key: ' ', bubbles: true }));
+  }, holdMs);
 }
 
 async function securityState(page: Page): Promise<{

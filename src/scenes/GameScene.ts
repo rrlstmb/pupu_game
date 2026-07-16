@@ -25,6 +25,11 @@ import { isPlayerInCover } from '../domain/alert/CoverVisibility';
 import { createCounterattackState, registerAngryHit, updateCounterattacks, type CounterattackState } from '../domain/counterattack/CounterattackSystem';
 import { cancelSurveillanceForSource, createSurveillanceState, updateSurveillance, type SurveillanceState } from '../domain/surveillance/SurveillanceSystem';
 import { cancelSecurityForGuard, createSecurityState, getReachableHorizontalIntervals, registerThrowExposure, relocatePlayerFromBlockade, updateSecurity, type SecurityState } from '../domain/security/SecuritySystem';
+import {
+  acceptFinalBossHit, consumeFinalGolden, createBossEncounterState, failIfFinalAttemptsExhausted,
+  isBossLandingHit, registerBossInteraction, updateBossEncounter, type BossEncounterState
+} from '../domain/boss/BossPhaseStateMachine';
+import { evaluateFinalEncounterSafety } from '../domain/boss/FinalEncounterSafetyCoordinator';
 import { removeHitTokensForProjectiles, resolveProjectileNPCHits } from '../domain/gameplay/HitDetection';
 import {
   collectNPCStateTransitionEvents,
@@ -35,6 +40,8 @@ import { Depths } from '../domain/layout/Depth';
 import {
   createLevelSession,
   activeEventForChannel,
+  completeBossLevel,
+  failBossLevel,
   failLevelCaught,
   spawnConfigForLevel,
   toggleLevelPause,
@@ -69,6 +76,7 @@ import {
   createPoopInventory,
   selectPoopByIndex,
   selectedPoopType,
+  setPoopStock,
   switchPoop,
   updatePoopCooldowns,
   type PoopInventoryState
@@ -106,6 +114,7 @@ import { PhaserWindIndicator } from '../systems/wind/PhaserWindIndicator';
 import { PhaserCounterattackSystem } from '../systems/counterattack/PhaserCounterattackSystem';
 import { PhaserSurveillanceSystem } from '../systems/surveillance/PhaserSurveillanceSystem';
 import { PhaserSecuritySystem } from '../systems/security/PhaserSecuritySystem';
+import { PhaserBossSystem } from '../systems/boss/PhaserBossSystem';
 
 export class GameScene extends Phaser.Scene {
   private levelDefinition: LevelDefinition = LEVEL_01;
@@ -134,6 +143,8 @@ export class GameScene extends Phaser.Scene {
   private surveillanceSystem?: PhaserSurveillanceSystem;
   private securityState: SecurityState = createSecurityState();
   private securitySystem?: PhaserSecuritySystem;
+  private bossState?: BossEncounterState;
+  private bossSystem?: PhaserBossSystem;
   private projectileConfig: ProjectileConfig = NORMAL_POOP_PROJECTILE_CONFIG;
   private chargeState: ChargeState = createChargeState();
   private lastLandingHitDebug?: {
@@ -176,6 +187,8 @@ export class GameScene extends Phaser.Scene {
     this.counterattackState = createCounterattackState();
     this.surveillanceState = createSurveillanceState();
     this.securityState = createSecurityState();
+    this.bossState = this.levelDefinition.bossEncounter
+      ? createBossEncounterState(this.levelSession.id, this.levelDefinition.bossEncounter) : undefined;
     this.projectileConfig = NORMAL_POOP_PROJECTILE_CONFIG;
     this.chargeState = createChargeState();
     this.windState = CALM_WIND_STATE;
@@ -205,6 +218,13 @@ export class GameScene extends Phaser.Scene {
     this.securitySystem = this.levelDefinition.security
       ? new PhaserSecuritySystem(this, this.levelDefinition.security, this.layout.rooftop.y, this.layout.rooftop.height)
       : undefined;
+    this.bossSystem = this.levelDefinition.bossEncounter
+      ? new PhaserBossSystem(
+        this,
+        this.levelDefinition.bossEncounter,
+        this.layout.rooftop.y,
+        this.layout.rooftop.height
+      ) : undefined;
     this.npcSpawnerState = createNPCSpawnerState();
     emitSceneReady(this);
     this.scene.launch(SceneKeys.HUD);
@@ -319,6 +339,8 @@ export class GameScene extends Phaser.Scene {
       this.surveillanceSystem = undefined;
       this.securitySystem?.dispose();
       this.securitySystem = undefined;
+      this.bossSystem?.dispose();
+      this.bossSystem = undefined;
       this.npcSystem.dispose();
       this.scrollingLayers.length = 0;
       this.debugOverlay?.destroy(true);
@@ -396,6 +418,13 @@ export class GameScene extends Phaser.Scene {
       this.poopInventory = switchPoop(this.poopInventory, 1);
     }
     this.syncPlayerView();
+    this.updateBossRuntime(deltaSeconds);
+    if (this.isGameOver) {
+      this.emitRuntimeState();
+      this.inputAdapter.endFrame();
+      this.setDebugState();
+      return;
+    }
     const previousNpcs = this.npcSpawnerState.npcs;
     this.npcSpawnerState = updateNPCSpawner(
       this.npcSpawnerState,
@@ -496,21 +525,30 @@ export class GameScene extends Phaser.Scene {
       if (fired) {
         if (this.levelDefinition.security) this.securityState = registerThrowExposure(this.securityState, this.playerState.x, this.levelDefinition.security);
         this.poopInventory = consumeSelectedPoop(this.poopInventory, POOP_DEFINITIONS);
+        if (selectedDefinition.id === 'golden_poop' && this.bossState) {
+          this.bossState = consumeFinalGolden(this.bossState);
+          this.poopInventory = setPoopStock(this.poopInventory, 'golden_poop', this.bossState.finalGoldenRemaining);
+        }
         this.levelSession = updateLevelMetrics(this.levelSession, {
           throwCount: this.levelSession.metrics.throwCount + 1,
           goldenPoopUsed: (this.levelSession.metrics.goldenPoopUsed ?? 0) + (selectedDefinition.id === 'golden_poop' ? 1 : 0),
-          goldenPoopRemaining: this.goldenStock()
+          goldenPoopRemaining: this.goldenStock(),
+          finalGoldenUsed: (this.levelSession.metrics.finalGoldenUsed ?? 0) +
+            (selectedDefinition.id === 'golden_poop' && this.bossState ? 1 : 0),
+          finalGoldenRemaining: this.bossState?.finalGoldenRemaining ?? this.levelSession.metrics.finalGoldenRemaining
         });
       }
     }
 
     this.projectileSystem.update(deltaSeconds, this.aimAssist.getPredictedLanding());
     const naturallyRecycledProjectiles = this.projectileSystem.consumeNaturalRecycledProjectiles();
-    this.createZonesFromLandedProjectiles(naturallyRecycledProjectiles);
+    const bossProjectileIds = this.processBossLandingProjectiles(naturallyRecycledProjectiles);
+    const npcProjectiles = naturallyRecycledProjectiles.filter((projectile) => !bossProjectileIds.has(projectile.id));
+    this.createZonesFromLandedProjectiles(npcProjectiles);
     this.syncZoneViews();
     const naturalRecycleCount = this.projectileSystem.consumeNaturalRecycleCount();
     const hitResult = resolveProjectileNPCHits(
-      naturallyRecycledProjectiles,
+      npcProjectiles,
       this.npcSpawnerState.npcs,
       NPC_DEFINITIONS,
       this.hitTokens,
@@ -553,6 +591,15 @@ export class GameScene extends Phaser.Scene {
           if (wasRecording) {
             this.surveillanceState = cancelSurveillanceForSource(this.surveillanceState, event.npcId);
             this.alertState = applyAlertDelta(this.alertState, this.levelDefinition.surveillance.interruptionAlertPenalty, 'npc_danger', ALERT_RULES);
+            if (this.bossState && this.levelDefinition.bossEncounter) {
+              const before = this.bossState;
+              this.bossState = registerBossInteraction(before, 'camera_interrupt', event.token, this.levelDefinition.bossEncounter);
+              if (before.protections[0].state !== 'broken' && this.bossState.protections[0].state === 'broken') {
+                this.levelSession = updateLevelMetrics(this.levelSession, {
+                  cameraEscortInterruptions: (this.levelSession.metrics.cameraEscortInterruptions ?? 0) + 1
+                });
+              }
+            }
           }
         }
       }
@@ -597,7 +644,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
     }
-    const hitProjectileIds = new Set(hitResult.projectileIdsToRecycle);
+    const hitProjectileIds = new Set([...hitResult.projectileIdsToRecycle, ...bossProjectileIds]);
     const missedRecycleCount = Math.max(0, naturalRecycleCount - hitProjectileIds.size);
     for (let index = 0; index < missedRecycleCount; index += 1) {
       this.scoreState = applyMissPenalty(this.scoreState, SCORE_RULES);
@@ -723,6 +770,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private levelSpawnConfig(): NPCSpawnConfig {
+    if (this.levelDefinition.bossEncounter && this.bossState) {
+      const phaseIndex = this.bossState.phase === 'phase_1_parade' || this.bossState.phase === 'not_started' ? 0
+        : this.bossState.phase === 'phase_2_protected_boss' || this.bossState.phase === 'transition_1' ? 1 : 2;
+      return { seed: this.levelDefinition.seed, ...this.levelDefinition.bossEncounter.phases[phaseIndex].spawn };
+    }
     return spawnConfigForLevel(this.levelDefinition, this.levelSession);
   }
 
@@ -788,6 +840,59 @@ export class GameScene extends Phaser.Scene {
       }
       this.createZoneFromProjectile(projectile, projectile.landedAt);
     }
+  }
+
+  private processBossLandingProjectiles(projectiles: readonly Projectile[]): Set<number> {
+    const consumed = new Set<number>();
+    const rules = this.levelDefinition.bossEncounter;
+    let bossState = this.bossState;
+    const levelSession = this.levelSession;
+    if (!rules || !bossState || !levelSession) return consumed;
+    let session: LevelSession = levelSession;
+    for (const projectile of projectiles) {
+      if (projectile.status !== 'landed' || !projectile.landedAt ||
+        !isBossLandingHit(bossState, projectile.landedAt.x, projectile.landedAt.y, rules)) continue;
+      const token: string = `${session.id}:${bossState.encounterId}:boss-projectile:${projectile.id}`;
+      consumed.add(projectile.id);
+      const before: BossEncounterState = bossState;
+      if (before.phase === 'phase_2_protected_boss') {
+        const activeGate = before.protections.find((gate) => gate.state === 'active');
+        const interaction = projectile.poopType === 'jumbo_poop' || projectile.poopType === 'bouncy_poop'
+          ? 'jumbo_or_bounce' as const : projectile.poopType === 'sticky_poop' ? 'sticky_slow' as const : undefined;
+        if (interaction) bossState = registerBossInteraction(before, interaction, token, rules);
+        else bossState = { ...before, processedInteractionTokens: [...before.processedInteractionTokens, token],
+          feedback: activeGate ? rules.protections.find((gate) => gate.id === activeGate.id)!.feedbackLocked : '防護中' };
+      } else {
+        bossState = acceptFinalBossHit(before, projectile.poopType, token);
+      }
+      const brokenBefore = before.protections.filter((gate) => gate.state === 'broken').length;
+      const brokenAfter = bossState.protections.filter((gate) => gate.state === 'broken').length;
+      const acceptedFinal = before.phase !== 'completed' && bossState.phase === 'completed';
+      const rejectedFinalGolden = projectile.poopType === 'golden_poop' && !acceptedFinal;
+      session = updateLevelMetrics(session, {
+        largeUmbrellaBreaks: (session.metrics.largeUmbrellaBreaks ?? 0) +
+          (brokenAfter > brokenBefore && projectile.poopType !== 'sticky_poop' ? 1 : 0),
+        bossStickySlows: (session.metrics.bossStickySlows ?? 0) +
+          (brokenAfter > brokenBefore && projectile.poopType === 'sticky_poop' ? 1 : 0),
+        bossProtectionMistakes: (session.metrics.bossProtectionMistakes ?? 0) +
+          (brokenAfter === brokenBefore && !acceptedFinal ? 1 : 0),
+        finalGoldenHits: (session.metrics.finalGoldenHits ?? 0) + (acceptedFinal ? 1 : 0),
+        finalGoldenMisses: (session.metrics.finalGoldenMisses ?? 0) + (rejectedFinalGolden ? 1 : 0),
+        finalEncounterCompleted: acceptedFinal ? 1 : session.metrics.finalEncounterCompleted
+      });
+      if (rejectedFinalGolden) bossState = failIfFinalAttemptsExhausted(bossState);
+    }
+    const missedFinalGolden = projectiles.some((projectile) => projectile.status === 'landed' && projectile.poopType === 'golden_poop' && !consumed.has(projectile.id));
+    if (missedFinalGolden) {
+      session = updateLevelMetrics(session, {
+        finalGoldenMisses: (session.metrics.finalGoldenMisses ?? 0) + 1
+      });
+      bossState = failIfFinalAttemptsExhausted(bossState);
+    }
+    this.bossState = bossState;
+    this.levelSession = session;
+    this.bossSystem?.sync(bossState);
+    return consumed;
   }
 
   private createZoneFromProjectile(projectile: Projectile, position: Vector2): void {
@@ -959,13 +1064,77 @@ export class GameScene extends Phaser.Scene {
 
   private securityMovementBounds(): { readonly minX: number; readonly maxX: number } {
     const rooftop = { minX: this.layout.rooftop.minX, maxX: this.layout.rooftop.maxX };
-    if (this.securityState.blockade.phase !== 'active') return rooftop;
-    const reachable = getReachableHorizontalIntervals(rooftop, this.securityState.blockade.blockedIntervals);
+    const blocked = [...this.securityState.blockade.blockedIntervals, ...this.bossBlockedIntervals()];
+    if (blocked.length === 0) return rooftop;
+    const reachable = getReachableHorizontalIntervals(rooftop, blocked);
     const containingPlayer = reachable.find((interval) => this.playerState.x >= interval.start && this.playerState.x <= interval.end);
     const selected = containingPlayer ?? [...reachable].sort((left, right) =>
       (right.end - right.start) - (left.end - left.start) || left.start - right.start
     )[0];
     return selected ? { minX: selected.start, maxX: selected.end } : rooftop;
+  }
+
+  private updateBossRuntime(deltaSeconds: number): void {
+    const rules = this.levelDefinition.bossEncounter;
+    if (!rules || !this.bossState || !this.levelSession) return;
+    const previous = this.bossState;
+    const nextStage = rules.safety.blockedStages[Math.min(previous.blockedStageCount, rules.safety.blockedStages.length - 1)];
+    const blocked = previous.phase === 'phase_3_rooftop_lockdown' && nextStage ? nextStage.intervals : this.bossBlockedIntervals();
+    const danger = [
+      ...this.securityState.instances.filter((item) => item.state === 'observing').map((item) => ({ start: item.zone.centerX - item.zone.halfWidth, end: item.zone.centerX + item.zone.halfWidth })),
+      ...this.surveillanceState.instances.filter((item) => item.state === 'active').map((item) => ({ start: item.targetZone.centerX - item.targetZone.halfWidth, end: item.targetZone.centerX + item.targetZone.halfWidth })),
+      ...this.counterattackState.instances.filter((item) => item.state === 'telegraph' || item.state === 'flying').map((item) => ({ start: item.lockedTargetX - rules.safety.minimumSafeWidth / 2, end: item.lockedTargetX + rules.safety.minimumSafeWidth / 2 }))
+    ];
+    const safety = evaluateFinalEncounterSafety({
+      playerMovementBounds: rules.safety.playerBounds, playerX: this.playerState.x,
+      blockedIntervals: blocked, dangerIntervals: danger, coverIntervals: rules.safety.coverIntervals,
+      bossReachableHitIntervals: rules.safety.bossHitIntervals,
+      minimumReachableWidth: rules.safety.minimumReachableWidth, minimumSafeWidth: rules.safety.minimumSafeWidth,
+      minimumThrowPositionWidth: rules.safety.minimumThrowPositionWidth,
+      minimumBossHitPositionWidth: rules.safety.minimumBossHitPositionWidth
+    });
+    this.bossState = updateBossEncounter(previous, {
+      deltaSeconds, paused: false,
+      phase1Score: Math.max(this.levelSession.metrics.phase1Score ?? 0, this.scoreState.totalScore),
+      phase1UniqueInteractions: Math.max(
+        this.levelSession.metrics.phase1UniqueInteractionTypes ?? 0,
+        Object.keys(this.levelSession.metrics.interactionCounts ?? {}).length
+      ),
+      paradeWaveCompleted: this.levelSession.triggeredEventIds.includes('clean_city_parade'),
+      safetyAllowsProgress: safety.allowed
+    }, rules);
+    if (safety.suggestedAction === 'relocate_player' && safety.relocationX !== undefined) {
+      this.playerState = { ...this.playerState, x: safety.relocationX, velocityX: 0 };
+    }
+    if (previous.finalGoldenGranted === 0 && this.bossState.finalGoldenGranted > 0) {
+      this.poopInventory = setPoopStock(this.poopInventory, 'golden_poop', this.bossState.finalGoldenRemaining);
+    }
+    this.levelSession = updateLevelMetrics(this.levelSession, {
+      phase1Score: previous.phase === 'phase_1_parade' ? this.scoreState.totalScore : this.levelSession.metrics.phase1Score,
+      phase1UniqueInteractionTypes: Object.keys(this.levelSession.metrics.interactionCounts ?? {}).length,
+      paradeWaveCompleted: this.levelSession.triggeredEventIds.includes('clean_city_parade') ? 1 : 0,
+      phaseTransitionsCompleted: this.bossState.transitionSequence,
+      finalGoldenGranted: this.bossState.finalGoldenGranted,
+      finalGoldenRemaining: this.bossState.finalGoldenRemaining,
+      finalWindowAttempts: this.bossState.finalWindowAttempts,
+      finalEncounterCompleted: this.bossState.completionCount,
+      maximumAlert: this.alertState.value,
+      completionTime: this.bossState.phase === 'completed' ? this.levelSession.elapsedSeconds : this.levelSession.metrics.completionTime
+    });
+    if (this.bossState.phase === 'completed') {
+      this.levelSession = completeBossLevel(this.levelSession);
+      this.isGameOver = true;
+    } else if (this.bossState.phase === 'failed') {
+      this.levelSession = failBossLevel(this.levelSession);
+      this.isGameOver = true;
+    }
+    this.bossSystem?.sync(this.bossState);
+  }
+
+  private bossBlockedIntervals(): readonly { readonly start: number; readonly end: number }[] {
+    const rules = this.levelDefinition.bossEncounter;
+    if (!rules || !this.bossState || this.bossState.blockedStageCount <= 0) return [];
+    return rules.safety.blockedStages[this.bossState.blockedStageCount - 1]?.intervals ?? [];
   }
 
   private syncZoneViews(): void {
@@ -1365,6 +1534,7 @@ export class GameScene extends Phaser.Scene {
     window.__SHIMING_BIDA_DEBUG__.surveillanceViewPool = this.surveillanceSystem?.stats();
     window.__SHIMING_BIDA_DEBUG__.securityState = this.securityState;
     window.__SHIMING_BIDA_DEBUG__.securityViewPool = this.securitySystem?.stats();
+    window.__SHIMING_BIDA_DEBUG__.bossState = this.bossState;
     window.__SHIMING_BIDA_DEBUG__.isGameOver = this.isGameOver;
     window.__SHIMING_BIDA_DEBUG__.isPlayerInCover = this.isPlayerInCover();
     window.__SHIMING_BIDA_DEBUG__.projectileSystem = this.projectileSystem.snapshot();
@@ -1443,6 +1613,18 @@ export class GameScene extends Phaser.Scene {
         }
       }
     };
+    window.__SHIMING_BIDA_DEBUG__.primeBossPhaseOneSandbox = () => {
+      if (!this.levelSession || !this.levelDefinition.bossEncounter || this.bossState?.phase !== 'phase_1_parade') return;
+      const phase = this.levelDefinition.bossEncounter.phases[0];
+      this.levelSession = updateLevelMetrics(this.levelSession, {
+        phase1Score: phase.phaseScoreTarget ?? 0,
+        phase1UniqueInteractionTypes: phase.uniqueInteractionTarget ?? 0,
+        paradeWaveCompleted: 1
+      });
+      if (!this.levelSession.triggeredEventIds.includes('clean_city_parade')) {
+        this.levelSession = { ...this.levelSession, triggeredEventIds: [...this.levelSession.triggeredEventIds, 'clean_city_parade'] };
+      }
+    };
   }
 
   private clearDebugState(): void {
@@ -1470,6 +1652,7 @@ export class GameScene extends Phaser.Scene {
     delete debug.surveillanceViewPool;
     delete debug.securityState;
     delete debug.securityViewPool;
+    delete debug.bossState;
     delete debug.isGameOver;
     delete debug.isPlayerInCover;
     delete debug.projectileSystem;
@@ -1493,6 +1676,7 @@ export class GameScene extends Phaser.Scene {
     delete debug.spawnNPCSandbox;
     delete debug.setPlayerX;
     delete debug.primeCounterattackSandbox;
+    delete debug.primeBossPhaseOneSandbox;
     delete debug.setNPCX;
     delete debug.clearNPCSandbox;
   }
