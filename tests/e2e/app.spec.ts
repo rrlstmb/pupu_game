@@ -101,7 +101,7 @@ test('phase 03 keyboard movement stays horizontal, bounded, and does not duplica
 
   const firstEntryListeners = await inputListenerCount(page);
   const initial = await playerState(page);
-  expect(firstEntryListeners).toBe(6);
+  expect(firstEntryListeners).toBe(13);
 
   await page.keyboard.down('KeyD');
   await page.waitForTimeout(350);
@@ -217,9 +217,9 @@ test('phase 04 charges on hold, throws on release, and shows no production traje
     const shadow = (await projectileShadows(page))[0];
     return projectile && shadow ? Math.abs(projectile.visualPosition.y - shadow.y) : 0;
   }).toBeGreaterThan(20);
-  await page.screenshot({ path: 'docs/evidence/phase-04-projectile-shadow.png', fullPage: true });
   await page.keyboard.press('Escape');
   await expect.poll(async () => (await levelSession(page)).phase).toBe('paused');
+  await page.screenshot({ path: 'docs/evidence/phase-04-projectile-shadow.png', fullPage: true });
   const shadowBeforePause = (await projectileShadows(page))[0];
   await page.waitForTimeout(300);
   expect((await projectileShadows(page))[0]).toMatchObject({
@@ -344,7 +344,7 @@ test('retro Gate A survives ten scene entries, pause, blur, and projectile view 
   for (let cycle = 0; cycle < 10; cycle += 1) {
     await clickMenuStart(page, canvas);
     await expect.poll(() => activeScenes(page)).toContain('GameScene');
-    expect(await inputListenerCount(page)).toBe(6);
+    expect(await inputListenerCount(page)).toBe(13);
     const activeListenerCounts = await gameSceneLifecycleListenerCounts(page);
     activeLifecycleBaseline ??= activeListenerCounts;
     expect(activeListenerCounts).toEqual(activeLifecycleBaseline);
@@ -1408,6 +1408,7 @@ test('phase 20 level 9 combines security cover, throw exposure, golden stock, an
   expect(Math.max(...(await securityState(page)).instances.map((item) => item.detectionProgress))).toBeLessThan(progressBeforeCover);
   await chargeThrow(page, 0.05);
   await expect.poll(async () => (await securityState(page)).throwExposureSeconds).toBeGreaterThan(0);
+  await expect.poll(async () => (await projectileSystem(page)).projectiles.length, { timeout: 8_000 }).toBe(0);
 
   await page.keyboard.press('KeyE');
   await page.keyboard.press('KeyE');
@@ -1526,7 +1527,7 @@ test('phase 21 level 10 failure and retry reset encounter state and final invent
   expect(reset.processedInteractionTokens).toEqual([]);
   expect(reset.blockedStageCount).toBe(0);
   expect(await poopStock(page, 'golden_poop')).toBe(0);
-  expect(await inputListenerCount(page)).toBe(6);
+  expect(await inputListenerCount(page)).toBe(13);
 });
 
 async function surveillanceState(page: Page): Promise<{

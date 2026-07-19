@@ -17,6 +17,9 @@ export class HUDScene extends Phaser.Scene {
   private alertText?: Phaser.GameObjects.Text;
   private levelText?: Phaser.GameObjects.Text;
   private breakdownText?: Phaser.GameObjects.Text;
+  private controlHintText?: Phaser.GameObjects.Text;
+  private poopButtons: Phaser.GameObjects.Text[] = [];
+  private poopButtonSignature = '';
   private failureOverlay?: Phaser.GameObjects.Container;
   private scoreState: ScoreState = createScoreState();
   private poopInventory: PoopInventoryState = createPoopInventory(POOP_DEFINITIONS);
@@ -69,6 +72,12 @@ export class HUDScene extends Phaser.Scene {
       backgroundColor: '#24311f',
       padding: { x: 10, y: 6 }
     });
+    this.controlHintText = this.add
+      .text(GAME_CONFIG.width / 2, GAME_CONFIG.height - 12, 'A/D 或移動滑鼠　Space 或按住滑鼠左鍵蓄力，放開投擲', {
+        fontFamily: 'monospace', fontSize: '14px', color: '#d1d5db', backgroundColor: '#111827',
+        padding: { x: 8, y: 4 }
+      })
+      .setOrigin(0.5, 1);
     this.alertText = this.add
       .text(GAME_CONFIG.width - 24, 82, '', {
         fontFamily: 'monospace',
@@ -80,6 +89,7 @@ export class HUDScene extends Phaser.Scene {
       })
       .setOrigin(1, 0)
       .setInteractive({ useHandCursor: true });
+    this.alertText.setData('role', 'alert-hud');
     this.levelText = this.add
       .text(GAME_CONFIG.width / 2, 20, '', {
         fontFamily: 'monospace',
@@ -112,6 +122,12 @@ export class HUDScene extends Phaser.Scene {
       this.poopText?.destroy();
       this.alertText?.destroy();
       this.breakdownText?.destroy();
+      this.controlHintText?.destroy();
+      this.poopButtons.forEach((button) => {
+        button.removeAllListeners();
+        button.destroy();
+      });
+      this.poopButtons = [];
       this.levelText?.destroy();
       this.failureOverlay?.destroy(true);
       bounds.destroy();
@@ -159,9 +175,44 @@ export class HUDScene extends Phaser.Scene {
     const stock = slot.stock === 'infinite' ? '∞' : String(slot.stock);
     const text = `${definition?.icon ?? '?'} ${definition?.label ?? slot.poopType}  stock ${stock}  cd ${slot.cooldownRemainingSeconds.toFixed(1)}s`;
     this.poopText?.setText(text);
+    this.renderPoopButtons();
     if (window.__SHIMING_BIDA_DEBUG__) {
       window.__SHIMING_BIDA_DEBUG__.hudPoopText = text;
     }
+  }
+
+  private renderPoopButtons(): void {
+    const signature = this.poopInventory.slots.map((slot) => slot.poopType).join('|');
+    if (signature !== this.poopButtonSignature) {
+      this.poopButtons.forEach((button) => {
+        button.removeAllListeners();
+        button.destroy();
+      });
+      this.poopButtons = this.poopInventory.slots.map((slot, index) => {
+        const definition = POOP_DEFINITIONS.find((candidate) => candidate.id === slot.poopType);
+        const button = this.add.text(24 + index * 48, 118, definition?.icon ?? '?', {
+          fontFamily: 'monospace', fontSize: '16px', color: '#f7f0dc', backgroundColor: '#374151',
+          padding: { x: 10, y: 6 }
+        }).setInteractive({ useHandCursor: true }).setData('role', `select-poop-${index}`);
+        button.on(Phaser.Input.Events.POINTER_UP, () => {
+          eventBus.emit(GameEvents.PoopSelectionRequested, index);
+        });
+        return button;
+      });
+      this.poopButtonSignature = signature;
+    }
+
+    this.poopButtons.forEach((button, index) => {
+      const slot = this.poopInventory.slots[index];
+      const usable = slot.cooldownRemainingSeconds <= 0 && (slot.stock === 'infinite' || slot.stock > 0);
+      const selected = index === this.poopInventory.selectedIndex;
+      button.setStyle({
+        color: usable ? '#f7f0dc' : '#6b7280',
+        backgroundColor: selected ? '#166534' : usable ? '#374151' : '#1f2937'
+      });
+      button.setAlpha(usable ? 1 : 0.58);
+      button.input!.cursor = usable ? 'pointer' : 'not-allowed';
+    });
   }
 
   private renderAlertState(): void {

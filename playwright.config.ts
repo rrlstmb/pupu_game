@@ -2,6 +2,9 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests/e2e',
+  // Phaser timing assertions share one browser worker so frame delivery does not
+  // become dependent on concurrent canvas simulations on the same host.
+  workers: 1,
   timeout: 30_000,
   expect: {
     timeout: 5_000
@@ -24,4 +27,3 @@ export default defineConfig({
     }
   ]
 });
-

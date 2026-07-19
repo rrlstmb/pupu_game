@@ -1,98 +1,71 @@
 import Phaser from 'phaser';
-import { ActionStateStore, InputActions, type InputSnapshot } from '../../domain/input/ActionState';
+import { MOUSE_INPUT_CONFIG } from '../../data/mouseInput';
+import { GameplayInputController, type GameplayInputIntent } from '../../domain/input/GameplayInputController';
+import { KeyboardInputAdapter } from './KeyboardInputAdapter';
+import { MouseInputAdapter } from './MouseInputAdapter';
 
-type KeyMapping = {
-  readonly action: keyof typeof InputActions;
-  readonly codes: readonly string[];
+type InputAdapterOptions = {
+  readonly worldSize: { readonly width: number; readonly height: number };
+  readonly getPlayerX: () => number;
+  readonly isOverUi: (worldX: number, worldY: number) => boolean;
+  readonly canStartGameplayPointer: () => boolean;
 };
 
-const KEY_MAPPINGS: readonly KeyMapping[] = [
-  { action: 'Left', codes: ['KeyA', 'ArrowLeft'] },
-  { action: 'Right', codes: ['KeyD', 'ArrowRight'] },
-  { action: 'Throw', codes: ['Space'] },
-  { action: 'Aim', codes: ['ShiftLeft', 'ShiftRight'] },
-  { action: 'SwitchPrev', codes: ['KeyQ'] },
-  { action: 'SwitchNext', codes: ['KeyE'] }
-];
-
 export class InputAdapter {
-  private readonly actions = new ActionStateStore();
-  private readonly keydownHandler = (event: KeyboardEvent) => this.handleKey(event, true);
-  private readonly keyupHandler = (event: KeyboardEvent) => this.handleKey(event, false);
+  private readonly keyboard: KeyboardInputAdapter;
+  private readonly mouse: MouseInputAdapter;
+  private readonly controller = new GameplayInputController();
   private readonly blurHandler = () => this.clearAll();
-  private readonly visibilityHandler = () => {
-    if (document.hidden) {
-      this.clearAll();
-    }
-  };
+  private readonly visibilityHandler = () => { if (document.hidden) this.clearAll(); };
   private readonly pauseHandler = () => this.clearAll();
   private readonly resumeHandler = () => this.clearAll();
   private disposed = false;
-  private listenerCount = 0;
 
-  constructor(private readonly scene: Phaser.Scene) {
-    this.bind();
+  constructor(private readonly scene: Phaser.Scene, options: InputAdapterOptions) {
+    this.keyboard = new KeyboardInputAdapter(scene);
+    this.mouse = new MouseInputAdapter({
+      canvas: scene.game.canvas,
+      config: MOUSE_INPUT_CONFIG,
+      ...options
+    });
+    window.addEventListener('blur', this.blurHandler);
+    document.addEventListener('visibilitychange', this.visibilityHandler);
+    scene.events.on(Phaser.Scenes.Events.PAUSE, this.pauseHandler);
+    scene.events.on(Phaser.Scenes.Events.RESUME, this.resumeHandler);
   }
 
-  snapshot(): InputSnapshot {
-    return this.actions.snapshot();
+  snapshot(): GameplayInputIntent {
+    return this.controller.resolve(this.keyboard.snapshot(), this.mouse.snapshot());
   }
 
   endFrame(): void {
-    this.actions.clearTransient();
+    this.keyboard.endFrame();
+    this.mouse.endFrame();
   }
 
   clearAll(): void {
-    this.actions.clearAll();
+    this.keyboard.clearAll();
+    this.mouse.clearAll();
+    this.controller.reset();
   }
 
   dispose(): void {
-    if (this.disposed) {
-      return;
-    }
-
+    if (this.disposed) return;
     this.disposed = true;
-    this.scene.input.keyboard?.off(Phaser.Input.Keyboard.Events.ANY_KEY_DOWN, this.keydownHandler);
-    this.scene.input.keyboard?.off(Phaser.Input.Keyboard.Events.ANY_KEY_UP, this.keyupHandler);
+    this.keyboard.dispose();
+    this.mouse.dispose();
     window.removeEventListener('blur', this.blurHandler);
     document.removeEventListener('visibilitychange', this.visibilityHandler);
     this.scene.events.off(Phaser.Scenes.Events.PAUSE, this.pauseHandler);
     this.scene.events.off(Phaser.Scenes.Events.RESUME, this.resumeHandler);
-    this.listenerCount = 0;
-    this.clearAll();
+    this.controller.reset();
   }
 
   getBoundListenerCount(): number {
-    return this.listenerCount;
+    return this.keyboard.listenerCount() + this.mouse.listenerCount() + 4;
   }
 
-  private bind(): void {
-    this.scene.input.keyboard?.on(Phaser.Input.Keyboard.Events.ANY_KEY_DOWN, this.keydownHandler);
-    this.scene.input.keyboard?.on(Phaser.Input.Keyboard.Events.ANY_KEY_UP, this.keyupHandler);
-    window.addEventListener('blur', this.blurHandler);
-    document.addEventListener('visibilitychange', this.visibilityHandler);
-    this.scene.events.on(Phaser.Scenes.Events.PAUSE, this.pauseHandler);
-    this.scene.events.on(Phaser.Scenes.Events.RESUME, this.resumeHandler);
-    this.listenerCount = 6;
-  }
-
-  private handleKey(event: KeyboardEvent, held: boolean): void {
-    const action = actionForCode(event.code);
-    if (!action) {
-      return;
-    }
-
-    event.preventDefault();
-    this.actions.setHeld(action, held);
-  }
-}
-
-function actionForCode(code: string) {
-  for (const mapping of KEY_MAPPINGS) {
-    if (mapping.codes.includes(code)) {
-      return InputActions[mapping.action];
-    }
-  }
-
-  return undefined;
+  getPointerListenerCount(): number { return this.mouse.listenerCount(); }
+  hasPointerCapture(): boolean { return this.mouse.hasPointerCapture(); }
+  getChargeOwner() { return this.controller.owner(); }
 }

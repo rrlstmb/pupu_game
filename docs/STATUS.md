@@ -18,6 +18,13 @@ Codex must not set any phase to `PASS`.
 - Evidence: `docs/evidence/GATE_D.md`
 - Prompt 22 remains `NOT_STARTED`.
 
+## Current Patch
+
+- Patch: Pre-Prompt 22 Mouse Input
+- Status: MOUSE_INPUT_READY_FOR_REVIEW
+- Evidence: `docs/evidence/PRE_PHASE_22_MOUSE_INPUT.md`
+- Prompt 22 remains `NOT_STARTED`.
+
 ## Audit History
 
 - Retro Gate A - Technical and Feel Baseline: `READY_FOR_REVIEW` on 2026-07-14; evidence at `docs/evidence/GATE_A_RETRO.md`.
@@ -31,6 +38,7 @@ Codex must not set any phase to `PASS`.
 - Prompt 04 Vertical Charge Meter and Ground Shadow Targeted Patch: `READY_FOR_REVIEW` on 2026-07-15; evidence at `docs/evidence/PHASE_04_VERTICAL_METER_SHADOW_FIX.md`.
 - Prompt 13 Regression - Level 2 After-work Rush: `READY_FOR_REVIEW` on 2026-07-15; evidence at `docs/evidence/PROMPT_13_REGRESSION.md`.
 - Gate D - Ten-level Campaign Integration and Content Lock: `GATE_D_READY_FOR_REVIEW` on 2026-07-17; evidence at `docs/evidence/GATE_D.md`.
+- Pre-Prompt 22 Mouse Input: `MOUSE_INPUT_READY_FOR_REVIEW` on 2026-07-17; evidence at `docs/evidence/PRE_PHASE_22_MOUSE_INPUT.md`.
 
 ## Baseline
 

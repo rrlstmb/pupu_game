@@ -106,6 +106,7 @@ import { GAME_CONFIG } from '../runtime/GameConfig';
 import { SceneKeys } from '../runtime/SceneKeys';
 import { emitSceneReady, emitSceneShutdown, registerSceneDisposer } from '../runtime/sceneLifecycle';
 import { InputAdapter } from '../systems/input/InputAdapter';
+import type { GameplayInputIntent } from '../domain/input/GameplayInputController';
 import { PhaserNPCSystem } from '../systems/npc/PhaserNPCSystem';
 import { AimAssist } from '../systems/projectile/AimAssist';
 import { PhaserProjectileSystem } from '../systems/projectile/PhaserProjectileSystem';
@@ -120,6 +121,10 @@ export class GameScene extends Phaser.Scene {
   private levelDefinition: LevelDefinition = LEVEL_01;
   private layout!: WorldLayout;
   private inputAdapter!: InputAdapter;
+  private inputIntent: GameplayInputIntent = {
+    horizontalAxis: 0, chargePressed: false, chargeHeld: false, chargeReleased: false,
+    aimHeld: false, switchPrevPressed: false, switchNextPressed: false, activeDevice: 'keyboard'
+  };
   private projectileSystem!: PhaserProjectileSystem;
   private aimAssist!: AimAssist;
   private chargeMeter!: PhaserChargeMeter;
@@ -163,6 +168,12 @@ export class GameScene extends Phaser.Scene {
   private readonly zoneViews = new Map<string, Phaser.GameObjects.Arc>();
   private cleanupStatusText?: Phaser.GameObjects.Text;
   private debugOverlayVisible = false;
+  private readonly poopSelectionRequested = (index: number) => {
+    const slot = this.poopInventory.slots[index];
+    if (!slot || slot.cooldownRemainingSeconds > 0 || (slot.stock !== 'infinite' && slot.stock <= 0)) return;
+    this.poopInventory = selectPoopByIndex(this.poopInventory, index);
+    eventBus.emit(GameEvents.PoopInventoryUpdated, this.poopInventory);
+  };
 
   constructor() {
     super(SceneKeys.Game);
@@ -198,8 +209,17 @@ export class GameScene extends Phaser.Scene {
     this.isGameOver = false;
     this.scrollingLayers.length = 0;
     this.layout = createWorldLayout(GAME_CONFIG.width, GAME_CONFIG.height);
-    this.inputAdapter = new InputAdapter(this);
     this.playerState = createInitialPlayerState(this.layout.rooftop);
+    this.inputIntent = {
+      horizontalAxis: 0, chargePressed: false, chargeHeld: false, chargeReleased: false,
+      aimHeld: false, switchPrevPressed: false, switchNextPressed: false, activeDevice: 'keyboard'
+    };
+    this.inputAdapter = new InputAdapter(this, {
+      worldSize: { width: GAME_CONFIG.width, height: GAME_CONFIG.height },
+      getPlayerX: () => this.playerState.x,
+      isOverUi: (x, y) => this.isPointerOverInteractiveUi(x, y),
+      canStartGameplayPointer: () => !this.isGameOver && this.levelSession?.phase === 'running'
+    });
     this.alertState = createAlertState(this.playerState.x);
     this.projectileSystem = new PhaserProjectileSystem(
       this, this.projectileGroundY(), this.projectileConfig, this.levelBounceSurfaces()
@@ -318,6 +338,7 @@ export class GameScene extends Phaser.Scene {
     window.addEventListener('keydown', arsenalSandbox);
     window.addEventListener('keydown', npcSandbox);
     document.addEventListener('keydown', togglePause, true);
+    eventBus.on(GameEvents.PoopSelectionRequested, this.poopSelectionRequested);
 
     registerSceneDisposer(this, () => {
       menuButton.off(Phaser.Input.Events.POINTER_UP, this.returnToMenu, this);
@@ -328,6 +349,7 @@ export class GameScene extends Phaser.Scene {
       window.removeEventListener('keydown', arsenalSandbox);
       window.removeEventListener('keydown', npcSandbox);
       document.removeEventListener('keydown', togglePause, true);
+      eventBus.off(GameEvents.PoopSelectionRequested, this.poopSelectionRequested);
       this.inputAdapter.dispose();
       this.projectileSystem.dispose();
       this.aimAssist.dispose();
@@ -380,6 +402,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const input = this.inputAdapter.snapshot();
+    this.inputIntent = input;
     const staggerMultiplier = this.counterattackState.staggerSeconds > 0
       ? this.levelDefinition.counterattack?.staggerMovementMultiplier ?? 1
       : 1;
@@ -388,14 +411,15 @@ export class GameScene extends Phaser.Scene {
     if (relocatedX !== this.playerState.x) this.playerState = { ...this.playerState, x: relocatedX, velocityX: 0 };
     this.playerState = updatePlayerMovement(
       this.playerState,
-      input,
+      input.horizontalAxis,
       movementBounds,
       {
         ...PLAYER_MOVEMENT_CONFIG,
         maxSpeed: PLAYER_MOVEMENT_CONFIG.maxSpeed * staggerMultiplier,
         acceleration: PLAYER_MOVEMENT_CONFIG.acceleration * staggerMultiplier
       },
-      deltaSeconds
+      deltaSeconds,
+      input.aimHeld
     );
     this.alertState = updateAlertOverTime(
       this.alertState,
@@ -403,7 +427,7 @@ export class GameScene extends Phaser.Scene {
         deltaSeconds,
         playerX: this.playerState.x,
         isInCover: this.isPlayerInCover(),
-        isThrowing: input.throw.held
+        isThrowing: input.chargeHeld
       },
       ALERT_RULES
     );
@@ -411,10 +435,10 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.poopInventory = updatePoopCooldowns(this.poopInventory, deltaSeconds);
-    if (input.switchPrev.pressed) {
+    if (input.switchPrevPressed) {
       this.poopInventory = switchPoop(this.poopInventory, -1);
     }
-    if (input.switchNext.pressed) {
+    if (input.switchNextPressed) {
       this.poopInventory = switchPoop(this.poopInventory, 1);
     }
     this.syncPlayerView();
@@ -441,8 +465,8 @@ export class GameScene extends Phaser.Scene {
       this.applyGameplayEventsToScore(transitionEvents);
     }
     this.updateCounterattackRuntime(deltaSeconds);
-    this.updateSurveillanceRuntime(deltaSeconds, input.throw.held);
-    this.updateSecurityRuntime(deltaSeconds, input.throw.held);
+    this.updateSurveillanceRuntime(deltaSeconds, input.chargeHeld);
+    this.updateSecurityRuntime(deltaSeconds, input.chargeHeld);
     this.environmentalEffects = updateEnvironmentalEffects(this.environmentalEffects, deltaSeconds);
     this.updateCleanupSystems(deltaSeconds);
     const areaUpdate = applyAreaEffectsToNPCs(
@@ -482,7 +506,7 @@ export class GameScene extends Phaser.Scene {
     this.projectileSystem.setDebugVisible(this.debugOverlayVisible);
     const chargeUpdate = updateCharge(
       this.chargeState,
-      input.throw,
+      { pressed: input.chargePressed, held: input.chargeHeld, released: input.chargeReleased },
       deltaSeconds,
       canUseSelectedPoop(this.poopInventory) && this.counterattackState.throwLockSeconds <= 0 && this.surveillanceState.throwLockSeconds <= 0 && this.securityState.throwLockSeconds <= 0,
       THROW_CHARGE_CONFIG
@@ -1438,7 +1462,21 @@ export class GameScene extends Phaser.Scene {
 
   private resetCharge(): void {
     this.chargeState = cancelCharge();
+    this.inputAdapter?.clearAll();
     this.chargeMeter?.sync(this.chargeState);
+  }
+
+  private isPointerOverInteractiveUi(x: number, y: number): boolean {
+    for (const scene of this.game.scene.getScenes(true)) {
+      for (const child of scene.children.list) {
+        const bounded = child as Phaser.GameObjects.GameObject & {
+          readonly visible?: boolean; readonly active?: boolean; getBounds?: () => Phaser.Geom.Rectangle;
+        };
+        if (bounded.visible === false || bounded.active === false || !bounded.getData?.('role')) continue;
+        if (bounded.getBounds?.().contains(x, y)) return true;
+      }
+    }
+    return false;
   }
 
   private renderDebugOverlay(layout: WorldLayout): void {
@@ -1552,6 +1590,10 @@ export class GameScene extends Phaser.Scene {
     window.__SHIMING_BIDA_DEBUG__.chargeMeter = this.chargeMeter.snapshot();
     window.__SHIMING_BIDA_DEBUG__.landingHit = this.lastLandingHitDebug;
     window.__SHIMING_BIDA_DEBUG__.inputListenerCount = this.inputAdapter.getBoundListenerCount();
+    window.__SHIMING_BIDA_DEBUG__.pointerListenerCount = this.inputAdapter.getPointerListenerCount();
+    window.__SHIMING_BIDA_DEBUG__.pointerCaptureActive = this.inputAdapter.hasPointerCapture();
+    window.__SHIMING_BIDA_DEBUG__.chargeInputOwner = this.inputAdapter.getChargeOwner();
+    window.__SHIMING_BIDA_DEBUG__.gameplayInputIntent = this.inputIntent;
     const clock = this.time as unknown as { _active: readonly unknown[]; _pendingInsertion: readonly unknown[] };
     window.__SHIMING_BIDA_DEBUG__.sceneTimerCount = clock._active.length + clock._pendingInsertion.length;
     window.__SHIMING_BIDA_DEBUG__.debugOverlayVisible = this.debugOverlayVisible;
@@ -1672,6 +1714,10 @@ export class GameScene extends Phaser.Scene {
     delete debug.chargeMeter;
     delete debug.landingHit;
     delete debug.inputListenerCount;
+    delete debug.pointerListenerCount;
+    delete debug.pointerCaptureActive;
+    delete debug.chargeInputOwner;
+    delete debug.gameplayInputIntent;
     delete debug.sceneTimerCount;
     delete debug.debugOverlayVisible;
     delete debug.levelSession;

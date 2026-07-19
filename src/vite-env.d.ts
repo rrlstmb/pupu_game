@@ -22,6 +22,7 @@ import type { CounterattackViewStats } from './systems/counterattack/PhaserCount
 import type { SurveillanceState } from './domain/surveillance/SurveillanceSystem';
 import type { SecurityState } from './domain/security/SecuritySystem';
 import type { BossEncounterState } from './domain/boss/BossPhaseStateMachine';
+import type { GameplayInputIntent, ChargeInputOwner } from './domain/input/GameplayInputController';
 
 declare global {
   interface Window {
@@ -96,6 +97,10 @@ declare global {
         readonly selectedNpcIds: readonly number[];
       };
       inputListenerCount?: number;
+      pointerListenerCount?: number;
+      pointerCaptureActive?: boolean;
+      chargeInputOwner?: ChargeInputOwner;
+      gameplayInputIntent?: GameplayInputIntent;
       sceneTimerCount?: number;
       debugOverlayVisible?: boolean;
       levelSession?: LevelSession;

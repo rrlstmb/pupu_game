@@ -8,6 +8,7 @@ export const GameEvents = {
   ReturnToMenu: 'game:return_to_menu',
   AlertUpdated: 'alert:updated',
   PoopInventoryUpdated: 'poop_inventory:updated',
+  PoopSelectionRequested: 'poop_inventory:selection_requested',
   ScoreUpdated: 'score:updated',
   LevelUpdated: 'level:updated',
   SceneReady: 'scene:ready',
@@ -21,6 +22,7 @@ export type GameEventPayloads = {
   [GameEvents.ReturnToMenu]: undefined;
   [GameEvents.AlertUpdated]: AlertState;
   [GameEvents.PoopInventoryUpdated]: PoopInventoryState;
+  [GameEvents.PoopSelectionRequested]: number;
   [GameEvents.ScoreUpdated]: ScoreState;
   [GameEvents.LevelUpdated]: LevelSession;
   [GameEvents.SceneReady]: { scene: string };

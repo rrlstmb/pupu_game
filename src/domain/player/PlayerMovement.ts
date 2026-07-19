@@ -1,5 +1,4 @@
 import type { PlayerMovementConfig } from '../../data/playerMovement';
-import { horizontalIntent, type InputSnapshot } from '../input/ActionState';
 
 export type PlayerMovementBounds = {
   readonly minX: number;
@@ -24,13 +23,14 @@ export function createInitialPlayerState(bounds: PlayerMovementBounds): PlayerSt
 
 export function updatePlayerMovement(
   state: PlayerState,
-  input: InputSnapshot,
+  horizontalAxis: number,
   bounds: PlayerMovementBounds,
   config: PlayerMovementConfig,
-  deltaSeconds: number
+  deltaSeconds: number,
+  aimHeld = false
 ): PlayerState {
   const safeDelta = Math.max(0, deltaSeconds);
-  const intent = horizontalIntent(input);
+  const intent = clamp(horizontalAxis, -1, 1);
   const velocityX =
     intent === 0
       ? decelerateTowardZero(state.velocityX, config.deceleration * safeDelta)
@@ -42,7 +42,7 @@ export function updatePlayerMovement(
   return {
     x: nextX,
     velocityX: clampedVelocity,
-    visualState: visualStateFor(input, clampedVelocity, config)
+    visualState: visualStateFor(aimHeld, clampedVelocity, config)
   };
 }
 
@@ -66,8 +66,8 @@ function decelerateTowardZero(current: number, amount: number): number {
   return 0;
 }
 
-function visualStateFor(input: InputSnapshot, velocityX: number, config: PlayerMovementConfig): PlayerStateKind {
-  if (input.aim.held) {
+function visualStateFor(aimHeld: boolean, velocityX: number, config: PlayerMovementConfig): PlayerStateKind {
+  if (aimHeld) {
     return 'nervous';
   }
 
@@ -77,4 +77,3 @@ function visualStateFor(input: InputSnapshot, velocityX: number, config: PlayerM
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
-
