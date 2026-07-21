@@ -439,6 +439,7 @@ test('phase 05 spawns pooled NPCs moving right to left with distinct behavior', 
   expect(moved!.x).toBeLessThan(first.x);
 
   await expect.poll(async () => new Set((await npcSpawner(page)).npcs.map((npc) => npc.definitionId)).size, { timeout: 12_000 }).toBeGreaterThanOrEqual(3);
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.spawnNPCSandbox?.('phone_user', 1260, 'mid_sidewalk'));
   await expect.poll(async () => (await npcSpawner(page)).npcs.some((npc) => npc.state === 'Distracted'), { timeout: 12_000 }).toBe(true);
 
   await page.screenshot({ path: 'docs/evidence/phase-05-npc-debug.png', fullPage: true });
@@ -1346,8 +1347,9 @@ test('phase 19 level 8 separates snapshot and recording surveillance with safe r
   await page.evaluate(() => {
     const debug = window.__SHIMING_BIDA_DEBUG__;
     debug?.clearNPCSandbox?.(true);
-    debug?.spawnNPCSandbox?.('camera_pedestrian', 950, 'mid_sidewalk');
+    debug?.spawnNPCSandbox?.('camera_pedestrian', 1260, 'mid_sidewalk');
   });
+  await expect.poll(async () => (await npcSpawner(page)).npcs.some((npc) => npc.definitionId === 'camera_pedestrian')).toBe(true);
   await expect.poll(async () => (await surveillanceState(page)).instances.some((item) => item.mode === 'snapshot'), { timeout: 8_000 }).toBe(true);
   let state = await surveillanceState(page);
   const snapshot = state.instances.find((item) => item.mode === 'snapshot')!;
@@ -1367,14 +1369,14 @@ test('phase 19 level 8 separates snapshot and recording surveillance with safe r
   await expect.poll(async () => (await surveillanceState(page)).instances.length).toBe(0);
   state = await surveillanceState(page);
   expect(state).toMatchObject({ instances: [], throwLockSeconds: 0, invulnerabilitySeconds: 0 });
-  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.spawnNPCSandbox?.('camera_pedestrian', 950, 'mid_sidewalk'));
+  await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.spawnNPCSandbox?.('camera_pedestrian', 1260, 'mid_sidewalk'));
   await expect.poll(async () => (await surveillanceState(page)).instances.some((item) => item.mode === 'snapshot'), { timeout: 8_000 }).toBe(true);
   await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.setPlayerX?.(150));
   await expect.poll(async () => (await surveillanceState(page)).stats.snapshotsAvoided, { timeout: 6_000 }).toBe(1);
   await page.evaluate(() => {
     const debug = window.__SHIMING_BIDA_DEBUG__;
     debug?.clearNPCSandbox?.(true);
-    debug?.spawnNPCSandbox?.('streamer', 950, 'mid_sidewalk');
+    debug?.spawnNPCSandbox?.('streamer', 1260, 'mid_sidewalk');
   });
   await expect.poll(async () => (await surveillanceState(page)).instances.some((item) => item.mode === 'recording' && item.state === 'active'), { timeout: 6_000 }).toBe(true);
   state = await surveillanceState(page);
