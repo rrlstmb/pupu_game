@@ -2,6 +2,7 @@ import type { AlertState } from '../domain/alert/AlertSystem';
 import type { PoopInventoryState } from '../domain/poop/PoopInventory';
 import type { ScoreState } from '../domain/score/ScoreCalculator';
 import type { LevelSession } from '../domain/level/LevelDirector';
+import type { RunContext } from '../domain/modes/ModeRegistry';
 
 export const GameEvents = {
   StartGame: 'game:start',
@@ -11,6 +12,7 @@ export const GameEvents = {
   PoopSelectionRequested: 'poop_inventory:selection_requested',
   ScoreUpdated: 'score:updated',
   LevelUpdated: 'level:updated',
+  RunContextUpdated: 'run_context:updated',
   SceneReady: 'scene:ready',
   SceneShutdown: 'scene:shutdown'
 } as const;
@@ -25,6 +27,7 @@ export type GameEventPayloads = {
   [GameEvents.PoopSelectionRequested]: number;
   [GameEvents.ScoreUpdated]: ScoreState;
   [GameEvents.LevelUpdated]: LevelSession;
+  [GameEvents.RunContextUpdated]: RunContext;
   [GameEvents.SceneReady]: { scene: string };
   [GameEvents.SceneShutdown]: { scene: string };
 };

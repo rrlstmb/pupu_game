@@ -13,6 +13,8 @@ import { emitSceneReady, emitSceneShutdown, registerSceneDisposer } from '../run
 import { audioSystem } from '../systems/audio/SemanticAudioSystem';
 import { UI_THEME } from '../data/presentation/uiTheme';
 import { PROJECTILE_SKINS } from '../data/presentation/projectileSkins';
+import { campaignRunContext, type RunContext } from '../domain/modes/ModeRegistry';
+import { saveService } from '../runtime/PersistenceRuntime';
 
 export class HUDScene extends Phaser.Scene {
   private scoreText?: Phaser.GameObjects.Text;
@@ -30,6 +32,8 @@ export class HUDScene extends Phaser.Scene {
   private poopInventory: PoopInventoryState = createPoopInventory(POOP_DEFINITIONS);
   private alertState: AlertState = createAlertState();
   private levelSession?: LevelSession;
+  private runContext?: RunContext;
+  private readonly runContextUpdated = (context: RunContext) => { this.runContext = context; };
   private readonly scoreUpdated = (scoreState: ScoreState) => {
     this.scoreState = scoreState;
     this.renderScoreState();
@@ -114,6 +118,7 @@ export class HUDScene extends Phaser.Scene {
     eventBus.on(GameEvents.AlertUpdated, this.alertUpdated);
     eventBus.on(GameEvents.PoopInventoryUpdated, this.poopInventoryUpdated);
     eventBus.on(GameEvents.LevelUpdated, this.levelUpdated);
+    eventBus.on(GameEvents.RunContextUpdated, this.runContextUpdated);
     this.renderScoreState();
     this.renderPoopInventory();
     this.renderAlertState();
@@ -123,6 +128,7 @@ export class HUDScene extends Phaser.Scene {
       eventBus.off(GameEvents.AlertUpdated, this.alertUpdated);
       eventBus.off(GameEvents.ScoreUpdated, this.scoreUpdated);
       eventBus.off(GameEvents.LevelUpdated, this.levelUpdated);
+      eventBus.off(GameEvents.RunContextUpdated, this.runContextUpdated);
       this.scoreText?.destroy();
       this.poopText?.destroy();
       this.alertText?.destroy();
@@ -264,6 +270,9 @@ export class HUDScene extends Phaser.Scene {
     if (this.introSessionId === session.id && this.introOverlay) return;
     this.hideIntro();
     this.introSessionId = session.id;
+    const tutorialId = `level-intro:${session.definition.id}`;
+    const introSeen = saveService().state.data.unlocks.tutorialIds.includes(tutorialId);
+    saveService().markTutorialSeen(tutorialId);
     audioSystem.play('level_intro', session.id);
     const overlay = this.add.container(0, 0).setDepth(UI_THEME.zIndexGroups.modal).setData('kind', 'level-intro');
     const panel = this.add.rectangle(GAME_CONFIG.width / 2, GAME_CONFIG.height / 2, 640, 250, 0x111827, 0.94)
@@ -272,7 +281,9 @@ export class HUDScene extends Phaser.Scene {
       fontFamily: 'sans-serif', fontSize: '42px', color: '#fef3c7'
     }).setOrigin(0.5);
     const lesson = this.add.text(GAME_CONFIG.width / 2, GAME_CONFIG.height / 2,
-      `目標 ${session.definition.targetScore} / 可用 ${session.definition.availablePoopTypes.length} 種投擲物\nA / D 或移動滑鼠 / Space 或滑鼠左鍵按住蓄力`, {
+      introSeen
+        ? `再次挑戰 / 目標 ${session.definition.targetScore}\n按下方按鈕可略過提示`
+        : `目標 ${session.definition.targetScore} / 可用 ${session.definition.availablePoopTypes.length} 種投擲物\nA / D 或移動滑鼠 / Space 或滑鼠左鍵按住蓄力`, {
         fontFamily: 'sans-serif', fontSize: '19px', color: '#e2e8f0', align: 'center', lineSpacing: 8,
         wordWrap: { width: 570 }
       }).setOrigin(0.5);
@@ -305,6 +316,19 @@ export class HUDScene extends Phaser.Scene {
     if (this.failureOverlay?.getData('sessionId') === session.id) return;
     this.failureOverlay?.destroy(true);
     const result = session.result!;
+    const context = this.runContext ?? campaignRunContext(session.definition.id);
+    const completion = saveService().commitResult({
+      resultToken: `${context.runId ?? session.id}:${result.outcome}`,
+      levelSessionId: session.id,
+      levelId: result.levelId,
+      outcome: result.outcome === 'success' ? 'success' : 'failure',
+      score: result.totalScore,
+      stars: result.stars.starsEarned,
+      accuracy: result.accuracy,
+      maxCombo: result.highestCombo,
+      completionTimeMs: Math.round(session.elapsedSeconds * 1000)
+    }, context);
+    if (window.__SHIMING_BIDA_DEBUG__) window.__SHIMING_BIDA_DEBUG__.saveState = saveService().state;
 
     const overlay = this.add.container(0, 0).setDepth(10_000).setData('sessionId', session.id);
     const panel = this.add.rectangle(0, 0, GAME_CONFIG.width, GAME_CONFIG.height, 0x111827, 0.78).setOrigin(0, 0);
@@ -317,12 +341,15 @@ export class HUDScene extends Phaser.Scene {
         padding: { x: 18, y: 10 }
       })
       .setOrigin(0.5);
-    const summary = this.add.text(GAME_CONFIG.width / 2, 215, [
+    const summary = this.add.text(GAME_CONFIG.width / 2, 200, [
       `總分 ${result.totalScore}    星級 ${result.stars.starsEarned}/3`,
       `最高連擊 ${result.highestCombo}    命中率 ${(result.accuracy * 100).toFixed(1)}%`,
       `命中 ${result.hitCount}    投擲 ${result.throwCount}`,
-      `seed ${result.seed}`
-    ].join('\n'), {
+      `seed ${result.seed}`,
+      completion.newRecord ? 'NEW RECORD  新紀錄' : completion.persisted ? '進度已保存' : '本次進度未能永久保存',
+      completion.unlockedPoopTypeIds.length > 0 ? `新大便解鎖：${completion.unlockedPoopTypeIds.join(', ')}` : '',
+      completion.unlockedModeIds.length > 0 ? `新模式解鎖：${completion.unlockedModeIds.join(', ')}` : ''
+    ].filter(Boolean).join('\n'), {
       fontFamily: 'monospace', fontSize: '22px', color: '#f7f0dc', align: 'center', lineSpacing: 8
     }).setOrigin(0.5, 0);
     const stars = this.add.text(GAME_CONFIG.width / 2, 370, result.stars.conditions.map((condition) =>
@@ -342,8 +369,9 @@ export class HUDScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
     retry.setData('role', 'retry-level');
     const nextLevel = nextCampaignLevel(session.definition.id)?.definition;
-    const hasNextLevel = Boolean(nextLevel);
-    const campaignComplete = result.outcome === 'success' && isFinalCampaignLevel(session.definition.id);
+    const campaignRun = context.progressionEligibility === 'campaign';
+    const hasNextLevel = campaignRun && Boolean(nextLevel) && saveService().state.data.unlocks.levelIds.includes(nextLevel!.id);
+    const campaignComplete = result.outcome === 'success' && campaignRun && isFinalCampaignLevel(session.definition.id);
     const terminalLabel = campaignComplete ? 'Campaign 完成' : '重試本關';
     const next = this.add
       .text(GAME_CONFIG.width / 2 + 110, 590, hasNextLevel ? '下一關' : terminalLabel, {
@@ -359,11 +387,17 @@ export class HUDScene extends Phaser.Scene {
     }).setOrigin(0.5).setVisible(!hasNextLevel);
 
     retry.on(Phaser.Input.Events.POINTER_UP, () => {
-      this.scene.get(SceneKeys.Game).scene.restart({ levelDefinition: session.definition });
+      this.scene.get(SceneKeys.Game).scene.restart({
+        levelDefinition: session.definition,
+        runContext: { ...context, runId: crypto.randomUUID() }
+      });
     });
     next.on(Phaser.Input.Events.POINTER_UP, () => {
       if (hasNextLevel) {
-        this.scene.get(SceneKeys.Game).scene.restart({ levelDefinition: nextLevel });
+        this.scene.get(SceneKeys.Game).scene.restart({
+          levelDefinition: nextLevel,
+          runContext: { ...campaignRunContext(nextLevel!.id), runId: crypto.randomUUID() }
+        });
       }
     });
     overlay.add([panel, title, summary, stars, retry, next, nextStatus]);

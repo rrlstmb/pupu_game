@@ -1,4 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
+import { seedCompletedCampaignThroughLevel } from './save-fixtures';
+
+test.beforeEach(async ({ page }) => seedCompletedCampaignThroughLevel(page, 10));
 
 test('Gate D campaign registry exposes ten levels and the next-level route terminates at level 10', async ({ page }) => {
   test.setTimeout(60_000);

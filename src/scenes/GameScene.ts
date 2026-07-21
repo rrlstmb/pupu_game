@@ -50,6 +50,7 @@ import {
   type LevelSession
 } from '../domain/level/LevelDirector';
 import type { LevelDefinition } from '../domain/level/LevelDefinition';
+import { campaignRunContext, type RunContext } from '../domain/modes/ModeRegistry';
 import { createWorldLayout, type Lane, type ParallaxLayer, type WorldLayout } from '../domain/layout/WorldLayout';
 import { createNPCSpawnerState, spawnNPCOfType, updateNPCSpawner } from '../domain/npc/NPCSpawner';
 import type { NPCSpawnerState, NPCSpawnConfig } from '../domain/npc/NPCModel';
@@ -123,6 +124,7 @@ import { audioSystem } from '../systems/audio/SemanticAudioSystem';
 import { environmentSkinFor } from '../data/presentation/environmentSkins';
 
 export class GameScene extends Phaser.Scene {
+  private runContext: RunContext = campaignRunContext(LEVEL_01.id);
   private levelDefinition: LevelDefinition = LEVEL_01;
   private layout!: WorldLayout;
   private inputAdapter!: InputAdapter;
@@ -185,10 +187,13 @@ export class GameScene extends Phaser.Scene {
     super(SceneKeys.Game);
   }
 
-  init(data?: { readonly levelDefinition?: LevelDefinition }): void {
+  init(data?: { readonly levelDefinition?: LevelDefinition; readonly runContext?: RunContext }): void {
     if (data?.levelDefinition) {
       this.levelDefinition = data.levelDefinition;
     }
+    this.runContext = data?.runContext ?? (this.runContext.levelId === this.levelDefinition.id
+      ? { ...this.runContext, runId: crypto.randomUUID() }
+      : { ...campaignRunContext(this.levelDefinition.id), runId: crypto.randomUUID() });
   }
 
   create(): void {
@@ -283,13 +288,13 @@ export class GameScene extends Phaser.Scene {
     };
     const retryWhenFailed = () => {
       if (this.isGameOver) {
-        this.scene.restart();
+        this.scene.restart({ levelDefinition: this.levelDefinition, runContext: { ...this.runContext, runId: crypto.randomUUID() } });
       }
     };
     const retryWhenFailedFromDocument = (event: KeyboardEvent) => {
       if (event.code === 'KeyR' && this.isGameOver) {
         event.preventDefault();
-        this.scene.restart();
+        this.scene.restart({ levelDefinition: this.levelDefinition, runContext: { ...this.runContext, runId: crypto.randomUUID() } });
       }
     };
     const adjustWind = (event: KeyboardEvent) => {
@@ -859,6 +864,7 @@ export class GameScene extends Phaser.Scene {
     if (this.levelSession) {
       eventBus.emit(GameEvents.LevelUpdated, this.levelSession);
     }
+    eventBus.emit(GameEvents.RunContextUpdated, this.runContext);
   }
 
   private checkFailureLatch(): void {
@@ -1667,6 +1673,7 @@ export class GameScene extends Phaser.Scene {
     window.__SHIMING_BIDA_DEBUG__.sceneTimerCount = clock._active.length + clock._pendingInsertion.length;
     window.__SHIMING_BIDA_DEBUG__.debugOverlayVisible = this.debugOverlayVisible;
     window.__SHIMING_BIDA_DEBUG__.levelSession = this.levelSession;
+    window.__SHIMING_BIDA_DEBUG__.runContext = this.runContext;
     window.__SHIMING_BIDA_DEBUG__.advanceLevelTime = (seconds: number) => {
       if (!this.levelSession) {
         return;

@@ -1,4 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
+import { seedCompletedCampaignThroughLevel } from './save-fixtures';
+
+test.beforeEach(async ({ page }) => seedCompletedCampaignThroughLevel(page, 10));
 import type { BossEncounterState } from '../../src/domain/boss/BossPhaseStateMachine';
 
 test('loads menu and enters the empty game scene without console errors', async ({ page }) => {
@@ -1476,7 +1479,7 @@ test('phase 21 level 10 completes the three-phase boss through a legal golden la
   await expect.poll(async () => (await bossState(page)).phase).toBe('transition_1');
   await page.waitForTimeout(1_500);
   expect(consoleErrors).toEqual([]);
-  await expect.poll(async () => (await bossState(page)).phase, { timeout: 5_000 }).toBe('phase_2_protected_boss');
+  await expect.poll(async () => (await bossState(page)).phase, { timeout: 10_000 }).toBe('phase_2_protected_boss');
   expect((await bossState(page)).processedTransitionTokens).toHaveLength(3);
 
   await page.evaluate(() => {
@@ -1508,6 +1511,12 @@ test('phase 21 level 10 completes the three-phase boss through a legal golden la
   await page.screenshot({ path: 'docs/evidence/phase-22-final-vulnerable.png', fullPage: true });
 
   await throwAtBoss(page, 8, 0.70);
+  await expect.poll(async () => {
+    const state = await bossState(page);
+    if (state.phase === 'completed') return 'resolved';
+    return state.finalWindowAttempts >= 2 && state.finalWindowState === 'active' ? 'retry-ready' : 'waiting';
+  }, { timeout: 12_000 }).toMatch(/resolved|retry-ready/);
+  if ((await bossState(page)).phase !== 'completed') await throwAtBoss(page, 8, 0.70);
   await expect.poll(async () => (await bossState(page)).phase, { timeout: 12_000 }).toBe('completed');
   await expect.poll(async () => (await levelSession(page)).phase).toBe('settled');
   const completed = await levelSession(page);

@@ -25,6 +25,8 @@ import type { BossEncounterState } from './domain/boss/BossPhaseStateMachine';
 import type { GameplayInputIntent, ChargeInputOwner } from './domain/input/GameplayInputController';
 import type { PresentationEffectStats } from './systems/presentation/PhaserPresentationEffects';
 import type { AudioSystemStats } from './systems/audio/SemanticAudioSystem';
+import type { RunContext } from './domain/modes/ModeRegistry';
+import type { SaveServiceState } from './services/SaveService';
 
 declare global {
   interface Window {
@@ -108,6 +110,8 @@ declare global {
       sceneTimerCount?: number;
       debugOverlayVisible?: boolean;
       levelSession?: LevelSession;
+      runContext?: RunContext;
+      saveState?: SaveServiceState;
       advanceLevelTime?: (seconds: number) => void;
       spawnNPCSandbox?: (npcType: string, x?: number, laneId?: 'back_shop' | 'mid_sidewalk' | 'front_road') => void;
       setPlayerX?: (x: number) => void;

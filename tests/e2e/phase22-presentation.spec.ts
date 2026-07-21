@@ -1,4 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { seedCompletedCampaignThroughLevel } from './save-fixtures';
+
+test.beforeEach(async ({ page }) => seedCompletedCampaignThroughLevel(page, 10));
 
 test('Opening skip, level intro isolation, polished characters, and mouse charge remain functional', async ({ page }) => {
   test.setTimeout(70_000);

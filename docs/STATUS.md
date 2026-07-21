@@ -6,10 +6,10 @@ Codex must not set any phase to `PASS`.
 
 ## Current Phase
 
-- Phase: 22
-- Name: Commercial Presentation Layer, Audio, and Opening
-- Status: PHASE_22_READY_FOR_REVIEW
-- Updated: 2026-07-20
+- Phase: 23
+- Name: Local Progress, Unlocks, Titles, and Modes
+- Status: PHASE_23_READY_FOR_REVIEW
+- Updated: 2026-07-21
 
 ## Current Audit
 
@@ -186,6 +186,6 @@ Codex must not set any phase to `PASS`.
 | 20 | READY_FOR_REVIEW | `docs/evidence/PHASE_20.md` |
 | 21 | READY_FOR_REVIEW | `docs/evidence/PHASE_21.md` |
 | 22 | READY_FOR_REVIEW | `docs/evidence/PHASE_22.md` |
-| 23 | NOT_STARTED | |
+| 23 | READY_FOR_REVIEW | `docs/evidence/PHASE_23.md` |
 | 24 | NOT_STARTED | |
 | 25 | NOT_STARTED | |

@@ -4,10 +4,15 @@ import { GAME_CONFIG } from '../runtime/GameConfig';
 import { SceneKeys } from '../runtime/SceneKeys';
 import { emitSceneReady, emitSceneShutdown, registerSceneDisposer } from '../runtime/sceneLifecycle';
 import { audioSystem } from '../systems/audio/SemanticAudioSystem';
+import { campaignRunContext } from '../domain/modes/ModeRegistry';
+import { saveService } from '../runtime/PersistenceRuntime';
 
 export class OpeningScene extends Phaser.Scene {
   private completed = false;
+  private replay = false;
   constructor() { super(SceneKeys.Opening); }
+
+  init(data?: { readonly replay?: boolean }): void { this.completed = false; this.replay = data?.replay === true; }
 
   create(): void {
     emitSceneReady(this);
@@ -32,7 +37,7 @@ export class OpeningScene extends Phaser.Scene {
         fontFamily: 'sans-serif', fontSize: '22px', color: '#f8fafc', backgroundColor: '#111827cc',
         padding: { x: 20, y: 14 }, align: 'center', lineSpacing: 8
       }).setOrigin(0.5).setData('role', 'opening-controls');
-    const skip = this.add.text(GAME_CONFIG.width - 32, 28, '跳過並進入第 1 關', {
+    const skip = this.add.text(GAME_CONFIG.width - 32, 28, this.replay ? '返回主選單' : '跳過並進入第 1 關', {
       fontFamily: 'sans-serif', fontSize: '20px', color: '#111827', backgroundColor: '#f6bd60', padding: { x: 18, y: 10 }
     }).setOrigin(1, 0).setInteractive({ useHandCursor: true }).setData('role', 'opening-skip');
     const complete = () => this.completeOpening();
@@ -49,8 +54,13 @@ export class OpeningScene extends Phaser.Scene {
   private completeOpening(): void {
     if (this.completed) return;
     this.completed = true;
+    saveService().markOpeningSeen();
     audioSystem.play('ui_confirm', 'opening-skip');
     this.input.enabled = false;
-    this.scene.start(SceneKeys.Game, { levelDefinition: LEVEL_01 });
+    if (this.replay) this.scene.start(SceneKeys.Menu);
+    else this.scene.start(SceneKeys.Game, {
+      levelDefinition: LEVEL_01,
+      runContext: { ...campaignRunContext(LEVEL_01.id), runId: crypto.randomUUID() }
+    });
   }
 }
