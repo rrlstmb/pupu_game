@@ -1,11 +1,12 @@
 import type Phaser from 'phaser';
 import type { NPCDefinition } from '../../domain/npc/NPCModel';
 import type { NPCSpawnerState } from '../../domain/npc/NPCModel';
+import { NPC_CHARACTER_SKINS } from '../../data/presentation/characterSkins';
+import { animationForNpc } from '../../domain/presentation/CharacterPresentation';
 
 type NPCView = {
   readonly container: Phaser.GameObjects.Container;
-  readonly body: Phaser.GameObjects.Rectangle;
-  readonly head: Phaser.GameObjects.Arc;
+  readonly body: Phaser.GameObjects.Image;
   readonly label: Phaser.GameObjects.Text;
   readonly bubble: Phaser.GameObjects.Text;
 };
@@ -43,7 +44,10 @@ export class PhaserNPCSystem {
       view.container.setPosition(npc.x, npc.y);
       view.container.setScale(npc.scale);
       view.container.setDepth(npc.depth);
-      view.body.setFillStyle(colorForState(definition.color, npc.state), 1);
+      const animation = animationForNpc(npc);
+      view.body.setTint(colorForState(0xffffff, npc.state));
+      view.body.setRotation(animation === 'run' ? Math.sin(npc.x * 0.06) * 0.08 : animation === 'hit' ? -0.16 : 0);
+      view.body.setScale(animation === 'rant' ? 1.08 : animation === 'slow' ? 0.96 : 1);
       view.label.setText(
         `#${npc.id} ${definition.id}\n${npc.state} ${Math.round(npc.currentSpeed)}\n${npc.dangerPhase} ${npc.dangerKind ?? '-'}\n${npc.laneId}`
       );
@@ -93,8 +97,9 @@ export class PhaserNPCSystem {
 
   private createView(id: number, definition: NPCDefinition): NPCView {
     const container = this.scene.add.container(0, 0);
-    const body = this.scene.add.rectangle(0, -definition.height / 2, definition.width, definition.height, definition.color, 1);
-    const head = this.scene.add.circle(0, -definition.height - 8, definition.width * 0.42, 0xf7f0dc, 1);
+    const skin = NPC_CHARACTER_SKINS[definition.id];
+    const body = this.scene.add.image(0, -definition.height * 0.56, skin.assetKey)
+      .setDisplaySize(definition.width * 1.55, definition.height * 1.35);
     const label = this.scene.add
       .text(0, -definition.height - 48, '', {
         fontFamily: 'monospace',
@@ -116,24 +121,19 @@ export class PhaserNPCSystem {
       .setOrigin(0.5, 1)
       .setVisible(false);
 
-    container.add([body, head, bubble, label]);
+    container.add([body, bubble, label]);
     container.setData('npc-id', id);
-    const view = { container, body, head, label, bubble };
+    const view = { container, body, label, bubble };
     this.views.set(id, view);
     return view;
   }
 
   private configureView(view: NPCView, id: number, definition: NPCDefinition): void {
     view.container.setData('npc-id', id).setScale(1);
-    view.body
-      .setPosition(0, -definition.height / 2)
-      .setDisplaySize(definition.width, definition.height)
-      .setFillStyle(definition.color, 1);
-    const headDiameter = definition.width * 0.84;
-    view.head
-      .setPosition(0, -definition.height - 8)
-      .setDisplaySize(headDiameter, headDiameter)
-      .setFillStyle(0xf7f0dc, 1);
+    const skin = NPC_CHARACTER_SKINS[definition.id];
+    view.body.setTexture(skin.assetKey).setPosition(0, -definition.height * 0.56)
+      .setDisplaySize(definition.width * 1.55, definition.height * 1.35)
+      .clearTint().setRotation(0).setAlpha(1);
     view.label.setPosition(0, -definition.height - 48).setText('').setVisible(false);
     view.bubble.setPosition(0, -definition.height - 76).setText('').setVisible(false);
   }
@@ -145,6 +145,7 @@ export class PhaserNPCSystem {
     }
 
     view.container.setActive(false).setVisible(false);
+    view.body.clearTint().setScale(1).setRotation(0).setAlpha(1).setFlipX(false).setVisible(true);
     this.pooledViews.push(view);
     this.views.delete(id);
   }

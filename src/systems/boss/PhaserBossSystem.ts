@@ -2,10 +2,13 @@ import type Phaser from 'phaser';
 import type { BossEncounterDefinition } from '../../domain/level/LevelDefinition';
 import type { BossEncounterState } from '../../domain/boss/BossPhaseStateMachine';
 import { Depths } from '../../domain/layout/Depth';
+import { BOSS_SKIN } from '../../data/presentation/characterSkins';
+import { animationForBoss } from '../../domain/presentation/CharacterPresentation';
 
 export class PhaserBossSystem {
   private readonly boss: Phaser.GameObjects.Container;
-  private readonly body: Phaser.GameObjects.Rectangle;
+  private readonly body: Phaser.GameObjects.Image;
+  private readonly aura: Phaser.GameObjects.Arc;
   private readonly label: Phaser.GameObjects.Text;
   private readonly status: Phaser.GameObjects.Text;
   private readonly blocked: Phaser.GameObjects.Rectangle[] = [];
@@ -16,12 +19,15 @@ export class PhaserBossSystem {
     private readonly rooftopY: number,
     private readonly rooftopHeight: number
   ) {
-    this.body = scene.add.rectangle(0, 0, rules.bossWidth, rules.bossHeight, 0xf472b6, 0.95)
-      .setStrokeStyle(5, 0xfef08a, 1);
+    this.aura = scene.add.circle(0, -rules.bossHeight * 0.35, rules.bossWidth * 0.7, 0xfacc15, 0.12)
+      .setStrokeStyle(5, 0xfef08a, 0.75);
+    this.body = scene.add.image(0, -rules.bossHeight * 0.34, BOSS_SKIN.assetKey)
+      .setDisplaySize(rules.bossWidth * 1.3, rules.bossHeight * 1.5);
     this.label = scene.add.text(0, 0, '潔癖網紅\n大型雨傘', {
       fontFamily: 'sans-serif', fontSize: '18px', color: '#111827', align: 'center'
     }).setOrigin(0.5);
-    this.boss = scene.add.container(0, rules.bossY, [this.body, this.label]).setDepth(Depths.particles).setVisible(false);
+    this.label.setPosition(0, rules.bossHeight * 0.42);
+    this.boss = scene.add.container(0, rules.bossY, [this.aura, this.body, this.label]).setDepth(Depths.particles).setVisible(false);
     this.status = scene.add.text(640, rooftopY + 10, '', {
       fontFamily: 'monospace', fontSize: '20px', color: '#fef3c7', backgroundColor: '#831843', padding: { x: 12, y: 7 }, align: 'center'
     }).setOrigin(0.5, 0).setDepth(Depths.hud).setVisible(false);
@@ -30,9 +36,13 @@ export class PhaserBossSystem {
   sync(state: BossEncounterState): void {
     const visible = state.phase !== 'not_started' && state.phase !== 'phase_1_parade' && state.phase !== 'transition_1' && state.phase !== 'failed';
     this.boss.setVisible(visible).setPosition(state.bossX, this.rules.bossY);
-    const gates = state.protections.map((gate) => `${gate.state === 'broken' ? '[破]' : gate.state === 'active' ? '[解]' : '[鎖]'}${gate.id}`).join(' ');
-    this.label.setText(`潔癖網紅\n${gates}`);
-    this.body.setFillStyle(state.finalWindowState === 'active' ? 0xfacc15 : 0xf472b6, 0.95);
+    const brokenGates = state.protections.filter((gate) => gate.state === 'broken').length;
+    this.label.setText(`潔癖網紅\n防護解除 ${brokenGates}/${state.protections.length}`);
+    const animation = animationForBoss(state);
+    this.body.setTint(animation === 'boss_vulnerable' ? 0xfef08a : animation === 'boss_complete' ? 0xa7f3d0 : 0xffffff)
+      .setRotation(animation === 'boss_protected' ? Math.sin(state.bossX * 0.04) * 0.025 : 0);
+    this.aura.setAlpha(animation === 'boss_vulnerable' ? 0.52 : 0.14)
+      .setScale(animation === 'boss_vulnerable' ? 1.14 : 1);
     this.status.setVisible(true).setText(`${phaseLabel(state.phase)}｜${state.feedback}\n黃金 ${state.finalGoldenRemaining}  機會 ${state.finalWindowAttempts}/${this.rules.finalWindow.repeatLimit}`);
     const intervals = state.blockedStageCount > 0 ? this.rules.safety.blockedStages[state.blockedStageCount - 1].intervals : [];
     while (this.blocked.length < intervals.length) {

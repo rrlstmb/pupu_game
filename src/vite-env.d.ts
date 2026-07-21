@@ -23,6 +23,8 @@ import type { SurveillanceState } from './domain/surveillance/SurveillanceSystem
 import type { SecurityState } from './domain/security/SecuritySystem';
 import type { BossEncounterState } from './domain/boss/BossPhaseStateMachine';
 import type { GameplayInputIntent, ChargeInputOwner } from './domain/input/GameplayInputController';
+import type { PresentationEffectStats } from './systems/presentation/PhaserPresentationEffects';
+import type { AudioSystemStats } from './systems/audio/SemanticAudioSystem';
 
 declare global {
   interface Window {
@@ -54,6 +56,8 @@ declare global {
       securityState?: SecurityState;
       securityViewPool?: { readonly active: number; readonly pooled: number; readonly created: number; readonly blockadeViews: number };
       bossState?: BossEncounterState;
+      presentationEffectStats?: PresentationEffectStats;
+      audioSystemStats?: AudioSystemStats;
       isGameOver?: boolean;
       isPlayerInCover?: boolean;
       hudScoreText?: string;

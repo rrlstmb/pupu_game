@@ -14,9 +14,11 @@ import type { Vector2 } from '../../domain/projectile/ProjectileTrajectory';
 import type { PoopType, ProjectilePoopRules } from '../../domain/poop/PoopModel';
 import { emptyProjectileRules } from '../../domain/projectile/ProjectileSystem';
 import { groundProjectionShadow, type GroundProjectionShadowState } from '../../domain/projectile/GroundProjectionShadow';
+import { PROJECTILE_SKINS } from '../../data/presentation/projectileSkins';
 
 type ProjectileView = {
-  readonly body: Phaser.GameObjects.Arc;
+  readonly body: Phaser.GameObjects.Image;
+  readonly trail: Phaser.GameObjects.Arc;
   readonly shadow: Phaser.GameObjects.Ellipse;
   readonly vector: Phaser.GameObjects.Line;
   readonly groundProjection: Phaser.GameObjects.Arc;
@@ -180,7 +182,8 @@ export class PhaserProjectileSystem {
     view.body
       .setPosition(projectile.visualPosition.x, projectile.visualPosition.y)
       .setDisplaySize(projectile.config.radius * 2, projectile.config.radius * 2)
-      .setFillStyle(colorForPoop(projectile.poopType), 1)
+      .setTexture(PROJECTILE_SKINS[projectile.poopType].assetKey)
+      .clearTint().setRotation(0).setAlpha(1)
       .setActive(true)
       .setVisible(true);
     view.shadow
@@ -188,6 +191,7 @@ export class PhaserProjectileSystem {
       .setDisplaySize(projectile.config.radius * 2.2, projectile.config.radius * 0.9)
       .setActive(true)
       .setVisible(true);
+    view.trail.setActive(true).setVisible(PROJECTILE_SKINS[projectile.poopType].trailAlpha > 0);
     view.vector.setActive(true).setVisible(this.debugVisible);
     view.groundProjection.setActive(true).setVisible(this.debugVisible);
     view.collisionRadius.setActive(true).setVisible(this.debugVisible);
@@ -196,8 +200,11 @@ export class PhaserProjectileSystem {
 
   private createView(projectile: Projectile): ProjectileView {
     const body = this.scene.add
-      .circle(projectile.visualPosition.x, projectile.visualPosition.y, projectile.config.radius, colorForPoop(projectile.poopType), 1)
+      .image(projectile.visualPosition.x, projectile.visualPosition.y, PROJECTILE_SKINS[projectile.poopType].assetKey)
+      .setDisplaySize(projectile.config.radius * 2.5, projectile.config.radius * 2.5)
       .setDepth(Depths.projectile);
+    const trail = this.scene.add.circle(projectile.visualPosition.x, projectile.visualPosition.y, projectile.config.radius * 0.55, colorForPoop(projectile.poopType), 0.38)
+      .setDepth(Depths.projectile - 1);
     const shadow = this.scene.add
       .ellipse(projectile.position.x, projectile.position.y, projectile.config.radius * 2.2, projectile.config.radius * 0.9, 0x111827, 0.32)
       .setDepth(Depths.projectileShadow);
@@ -217,7 +224,7 @@ export class PhaserProjectileSystem {
       .setDepth(Depths.debug - 3)
       .setVisible(this.debugVisible);
 
-    return { body, shadow, vector, groundProjection, collisionRadius };
+    return { body, trail, shadow, vector, groundProjection, collisionRadius };
   }
 
   private syncView(projectile: Projectile): void {
@@ -226,7 +233,14 @@ export class PhaserProjectileSystem {
       return;
     }
 
-    view.body.setPosition(projectile.visualPosition.x, projectile.visualPosition.y);
+    const skin = PROJECTILE_SKINS[projectile.poopType];
+    view.body.setPosition(projectile.visualPosition.x, projectile.visualPosition.y)
+      .setRotation(projectile.ageSeconds * skin.rotationSpeed);
+    view.trail.setPosition(
+      projectile.visualPosition.x - (projectile.position.x - projectile.trajectory.origin.x) * 0.035,
+      projectile.visualPosition.y + projectile.config.radius * 0.5
+    ).setFillStyle(skin.trailColor, skin.trailAlpha)
+      .setVisible(skin.trailAlpha > 0);
     const shadow = groundProjectionShadow(projectile);
     view.shadow
       .setPosition(shadow.x, shadow.y)
@@ -251,6 +265,8 @@ export class PhaserProjectileSystem {
     }
 
     view.body.setActive(false).setVisible(false);
+    view.body.clearTint().setScale(1).setRotation(0).setAlpha(1);
+    view.trail.setActive(false).setVisible(false).setScale(1).setAlpha(1);
     view.shadow.setActive(false).setVisible(false);
     view.vector.setActive(false).setVisible(false);
     view.groundProjection.setActive(false).setVisible(false);
@@ -261,6 +277,7 @@ export class PhaserProjectileSystem {
 
   private destroyView(view: ProjectileView): void {
     view.body.destroy();
+    view.trail.destroy();
     view.shadow.destroy();
     view.vector.destroy();
     view.groundProjection.destroy();

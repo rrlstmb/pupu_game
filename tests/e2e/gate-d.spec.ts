@@ -10,7 +10,8 @@ test('Gate D campaign registry exposes ten levels and the next-level route termi
 
   const roles = await page.evaluate(() => {
     const scene = window.__SHIMING_BIDA_DEBUG__?.game.scene.getScene('MenuScene');
-    return scene?.children.list.map((child) => child.getData?.('role')).filter(Boolean) ?? [];
+    return scene?.children.list.map((child) => child.getData?.('role'))
+      .filter((role): role is string => typeof role === 'string' && role.startsWith('start-')) ?? [];
   });
   expect(roles).toEqual([
     'start-game', 'start-level-02', 'start-level-03', 'start-level-04', 'start-level-05',

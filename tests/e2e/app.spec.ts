@@ -796,7 +796,7 @@ test('phase 17 level 6 creates controlled stink zones and cleans them with warni
   await expect.poll(async () => (await environmentalEffects(page)).activeCount, { timeout: 12_000 }).toBe(0);
   expect((await levelSession(page)).triggeredEventIds.filter((id) => id === 'cleanup_truck')).toHaveLength(1);
   expect(await page.locator('canvas').getAttribute('data-game-ready')).toBe('true');
-  await page.screenshot({ path: 'docs/evidence/phase-17-cleanup-day.png', fullPage: true });
+  await page.screenshot({ path: 'docs/evidence/phase-22-stink-cleaner.png', fullPage: true });
 });
 
 test('phase 18 level 7 telegraphs snapshot counterattacks that can hit or be dodged', async ({ page }) => {
@@ -815,7 +815,7 @@ test('phase 18 level 7 telegraphs snapshot counterattacks that can hit or be dod
   const stationaryAlert = (await alertState(page)).value;
   await expect.poll(async () => (await counterattackState(page)).instances.some((instance) => instance.state === 'telegraph')).toBe(true);
   const lockedX = (await counterattackState(page)).instances[0].lockedTargetX;
-  await page.screenshot({ path: 'docs/evidence/phase-18-counterattack-telegraph.png', fullPage: true });
+  await page.screenshot({ path: 'docs/evidence/phase-22-counterattack.png', fullPage: true });
   await expect.poll(async () => (await counterattackState(page)).stats.hitPlayer, { timeout: 8_000 }).toBe(1);
   expect((await alertState(page)).value).toBeGreaterThan(stationaryAlert);
   expect((await counterattackState(page)).instances).toHaveLength(0);
@@ -1120,7 +1120,7 @@ test('phase 14 teaches umbrella blocking and jumbo cracking in rainy Level 3', a
   expect((await gameplayEvents(page)).filter((event) => event.type === 'PROJECTILE_BLOCKED').at(-1)?.feedbackLabel)
     .toBe('雨傘擋住！');
   await page.waitForTimeout(100);
-  await page.screenshot({ path: 'docs/evidence/phase-14-umbrella-block.png', fullPage: true });
+  await page.screenshot({ path: 'docs/evidence/phase-22-umbrella-block.png', fullPage: true });
   expect((await scoreState(page)).totalScore).toBe(scoreBeforeBlock);
   expect((await levelSession(page)).metrics.hitCount).toBe(0);
 
@@ -1134,7 +1134,7 @@ test('phase 14 teaches umbrella blocking and jumbo cracking in rainy Level 3', a
   await expect.poll(async () => (await scoreState(page)).totalScore).toBeGreaterThan(scoreBeforeBlock);
   expect((await scoreState(page)).breakdowns.at(-1)?.ammoType).toBe('jumbo_poop');
   expect((await levelSession(page)).metrics.interactionCounts?.umbrella_crack).toBe(1);
-  await page.screenshot({ path: 'docs/evidence/phase-14-level-03-umbrella.png', fullPage: true });
+  await page.screenshot({ path: 'docs/evidence/phase-22-umbrella-break.png', fullPage: true });
 
   session = await levelSession(page);
   await advanceLevelTime(page, session.remainingSeconds);
@@ -1257,11 +1257,24 @@ test('phase 16 exposes deterministic wind and completes a scored bouncy hit in L
     debug?.clearNPCSandbox?.(true);
     for (const offset of [200, 225, 250]) debug?.spawnNPCSandbox?.('office_worker', x + offset, 'back_shop');
   }, { x: calmPlayerX });
+  await page.mouse.move(box!.x + box!.width * (calmPlayerX / 1280), box!.y + box!.height * (410 / 720));
   await chargeThrow(page, 1);
   await expect.poll(async () => (await projectileSystem(page)).projectiles[0]?.bounceCount, { timeout: 12_000 }).toBe(1);
+  await page.evaluate(() => {
+    const debug = window.__SHIMING_BIDA_DEBUG__;
+    const projectile = debug?.projectileSystem?.projectiles[0];
+    if (!projectile) return;
+    const trajectory = projectile.trajectory;
+    const time = trajectory.travelDuration;
+    const rawWind = 0.5 * trajectory.windAccelerationX * trajectory.windAffectX * time * time;
+    const maxWind = trajectory.windMaxHorizontalOffset ?? Number.POSITIVE_INFINITY;
+    const landingX = trajectory.origin.x + trajectory.initialVelocity.x * time + Math.max(-maxWind, Math.min(maxWind, rawWind));
+    const remaining = Math.max(0, time - projectile.ageSeconds);
+    for (const npc of debug?.npcSpawner?.npcs ?? []) debug?.setNPCX?.(npc.id, landingX + npc.currentSpeed * remaining);
+  });
   await expect.poll(async () =>
     (await gameplayEvents(page)).filter((event) => event.type === 'NPC_RANT_STARTED').length - rantsBefore,
-  { timeout: 12_000 }).toBe(1);
+  { timeout: 18_000 }).toBe(1);
   expect((await levelSession(page)).metrics.interactionCounts?.bounced_hit).toBe(1);
   expect((await scoreState(page)).totalScore).toBeGreaterThan(0);
   expect(await projectileShadows(page)).toHaveLength(0);
@@ -1273,7 +1286,7 @@ test('phase 16 exposes deterministic wind and completes a scored bouncy hit in L
   ]);
   await expect.poll(() => page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.windState?.activeSegmentId)).toBe('climax_gale');
   expect((await npcSpawner(page)).npcs.length).toBeLessThanOrEqual(16);
-  await page.screenshot({ path: 'docs/evidence/phase-16-level-05-wind-bounce.png', fullPage: true });
+  await page.screenshot({ path: 'docs/evidence/phase-22-wind-bounce.png', fullPage: true });
 
   await advanceLevelTime(page, 28);
   await expect.poll(async () => (await levelSession(page)).phase).toBe('settled');
@@ -1334,7 +1347,7 @@ test('phase 19 level 8 separates snapshot and recording surveillance with safe r
   let state = await surveillanceState(page);
   const snapshot = state.instances.find((item) => item.mode === 'snapshot')!;
   await page.evaluate((x) => window.__SHIMING_BIDA_DEBUG__?.setPlayerX?.(x), snapshot.targetZone.centerX);
-  await page.screenshot({ path: 'docs/evidence/phase-19-snapshot-telegraph.png', fullPage: true });
+  await page.screenshot({ path: 'docs/evidence/phase-22-snapshot.png', fullPage: true });
   const alertBefore = (await alertState(page)).value;
   await expect.poll(async () => (await surveillanceState(page)).stats.snapshotCaptures, { timeout: 6_000 }).toBe(1);
   expect((await alertState(page)).value).toBeGreaterThan(alertBefore);
@@ -1363,6 +1376,7 @@ test('phase 19 level 8 separates snapshot and recording surveillance with safe r
   const recording = state.instances.find((item) => item.mode === 'recording')!;
   await page.evaluate((x) => window.__SHIMING_BIDA_DEBUG__?.setPlayerX?.(x), recording.targetZone.centerX);
   await expect.poll(async () => (await surveillanceState(page)).instances.find((item) => item.mode === 'recording')?.exposure ?? 0).toBeGreaterThan(0.1);
+  await page.screenshot({ path: 'docs/evidence/phase-22-recording.png', fullPage: true });
   await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.setPlayerX?.(150));
   const exposureBefore = (await surveillanceState(page)).instances.find((item) => item.mode === 'recording')?.exposure ?? 0;
   await page.waitForTimeout(450);
@@ -1428,7 +1442,7 @@ test('phase 20 level 9 combines security cover, throw exposure, golden stock, an
   const player = await playerState(page);
   expect(security.blockade.blockedIntervals.some((interval) => player.x >= interval.start && player.x <= interval.end)).toBe(false);
   expect(security.blockade.blockedIntervals).toEqual([{ start: 900, end: 1178 }]);
-  await page.screenshot({ path: 'docs/evidence/phase-20-security-blockade.png', fullPage: true });
+  await page.screenshot({ path: 'docs/evidence/phase-22-security.png', fullPage: true });
 
   await page.evaluate(() => {
     const debug = window.__SHIMING_BIDA_DEBUG__;
@@ -1475,7 +1489,7 @@ test('phase 21 level 10 completes the three-phase boss through a legal golden la
   expect(cameraNpc).toBeDefined();
   await debugMinimumRepeatThrow(page, cameraNpc!.id);
   await expect.poll(async () => (await bossState(page)).protections[0].state, { timeout: 12_000 }).toBe('broken');
-  await page.screenshot({ path: 'docs/evidence/phase-21-boss-protections.png', fullPage: true });
+  await page.screenshot({ path: 'docs/evidence/phase-22-boss-protections.png', fullPage: true });
 
   await throwAtBoss(page, 4, 0.70);
   await expect.poll(async () => (await bossState(page)).protections[1].state, { timeout: 12_000 }).toBe('broken');
@@ -1491,7 +1505,7 @@ test('phase 21 level 10 completes the three-phase boss through a legal golden la
   expect(await poopStock(page, 'golden_poop')).toBe(2);
   await expect.poll(async () => (await bossState(page)).blockedStageCount, { timeout: 8_000 }).toBe(2);
   await expect.poll(async () => (await bossState(page)).finalWindowState, { timeout: 5_000 }).toBe('active');
-  await page.screenshot({ path: 'docs/evidence/phase-21-final-safe-space.png', fullPage: true });
+  await page.screenshot({ path: 'docs/evidence/phase-22-final-vulnerable.png', fullPage: true });
 
   await throwAtBoss(page, 8, 0.70);
   await expect.poll(async () => (await bossState(page)).phase, { timeout: 12_000 }).toBe('completed');
@@ -1502,8 +1516,8 @@ test('phase 21 level 10 completes the three-phase boss through a legal golden la
   expect((await bossState(page)).completionCount).toBe(1);
   await expect.poll(() => hudResultText(page)).toContain('任務成功');
   await expect.poll(() => hudResultText(page)).toContain('十關 Campaign 完成');
-  await page.screenshot({ path: 'docs/evidence/gate-d-campaign-complete.png', fullPage: true });
-  await page.screenshot({ path: 'docs/evidence/phase-21-final-golden-hit.png', fullPage: true });
+  await page.screenshot({ path: 'docs/evidence/phase-22-campaign-complete.png', fullPage: true });
+  await page.screenshot({ path: 'docs/evidence/phase-22-final-golden-hit.png', fullPage: true });
   expect(consoleErrors).toEqual([]);
 });
 

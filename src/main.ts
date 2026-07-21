@@ -6,10 +6,11 @@ import { GameScene } from './scenes/GameScene';
 import { HUDScene } from './scenes/HUDScene';
 import { MenuScene } from './scenes/MenuScene';
 import { PreloadScene } from './scenes/PreloadScene';
+import { OpeningScene } from './scenes/OpeningScene';
 import './styles.css';
 
 const game = new Phaser.Game(
-  createPhaserConfig(GAME_CONFIG, [BootScene, PreloadScene, MenuScene, GameScene, HUDScene])
+  createPhaserConfig(GAME_CONFIG, [BootScene, PreloadScene, MenuScene, OpeningScene, GameScene, HUDScene])
 );
 
 if (GAME_CONFIG.debug) {
@@ -18,4 +19,3 @@ if (GAME_CONFIG.debug) {
     config: GAME_CONFIG
   };
 }
-

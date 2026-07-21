@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { SceneKeys } from '../runtime/SceneKeys';
 import { emitSceneReady } from '../runtime/sceneLifecycle';
+import { registerGeneratedPresentationAssets } from '../systems/presentation/GeneratedAssetFactory';
 
 export class PreloadScene extends Phaser.Scene {
   constructor() {
@@ -9,6 +10,7 @@ export class PreloadScene extends Phaser.Scene {
 
   preload(): void {
     this.createPlaceholderTexture('placeholder-tile', 32, 32, 0x4f8fba, 0xf7f0dc);
+    registerGeneratedPresentationAssets(this);
   }
 
   create(): void {
@@ -36,4 +38,3 @@ export class PreloadScene extends Phaser.Scene {
     graphics.destroy();
   }
 }
-

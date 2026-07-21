@@ -10,6 +10,9 @@ import { GAME_CONFIG } from '../runtime/GameConfig';
 import { GameEvents } from '../runtime/GameEvents';
 import { SceneKeys } from '../runtime/SceneKeys';
 import { emitSceneReady, emitSceneShutdown, registerSceneDisposer } from '../runtime/sceneLifecycle';
+import { audioSystem } from '../systems/audio/SemanticAudioSystem';
+import { UI_THEME } from '../data/presentation/uiTheme';
+import { PROJECTILE_SKINS } from '../data/presentation/projectileSkins';
 
 export class HUDScene extends Phaser.Scene {
   private scoreText?: Phaser.GameObjects.Text;
@@ -21,6 +24,8 @@ export class HUDScene extends Phaser.Scene {
   private poopButtons: Phaser.GameObjects.Text[] = [];
   private poopButtonSignature = '';
   private failureOverlay?: Phaser.GameObjects.Container;
+  private introOverlay?: Phaser.GameObjects.Container;
+  private introSessionId?: string;
   private scoreState: ScoreState = createScoreState();
   private poopInventory: PoopInventoryState = createPoopInventory(POOP_DEFINITIONS);
   private alertState: AlertState = createAlertState();
@@ -57,7 +62,7 @@ export class HUDScene extends Phaser.Scene {
       padding: { x: 10, y: 6 }
     });
     this.breakdownText = this.add
-      .text(24, 132, '', {
+      .text(24, 166, '', {
         fontFamily: 'monospace',
         fontSize: '14px',
         color: '#dbeafe',
@@ -130,6 +135,7 @@ export class HUDScene extends Phaser.Scene {
       this.poopButtons = [];
       this.levelText?.destroy();
       this.failureOverlay?.destroy(true);
+      this.introOverlay?.destroy(true);
       bounds.destroy();
       if (window.__SHIMING_BIDA_DEBUG__) {
         delete window.__SHIMING_BIDA_DEBUG__.hudLevelText;
@@ -190,7 +196,7 @@ export class HUDScene extends Phaser.Scene {
       });
       this.poopButtons = this.poopInventory.slots.map((slot, index) => {
         const definition = POOP_DEFINITIONS.find((candidate) => candidate.id === slot.poopType);
-        const button = this.add.text(24 + index * 48, 118, definition?.icon ?? '?', {
+        const button = this.add.text(24 + index * 48, 118, PROJECTILE_SKINS[slot.poopType]?.hudGlyph ?? definition?.icon ?? '?', {
           fontFamily: 'monospace', fontSize: '16px', color: '#f7f0dc', backgroundColor: '#374151',
           padding: { x: 10, y: 6 }
         }).setInteractive({ useHandCursor: true }).setData('role', `select-poop-${index}`);
@@ -242,13 +248,45 @@ export class HUDScene extends Phaser.Scene {
     }
 
     if (session.phase === 'settled' && session.result) {
+      this.hideIntro();
       this.renderResultOverlay(session);
     } else if (session.phase === 'paused') {
       this.renderPauseOverlay();
     } else {
       this.failureOverlay?.destroy(true);
       this.failureOverlay = undefined;
+      if (session.phase === 'countdown') this.renderLevelIntro(session);
+      else this.hideIntro();
     }
+  }
+
+  private renderLevelIntro(session: LevelSession): void {
+    if (this.introSessionId === session.id && this.introOverlay) return;
+    this.hideIntro();
+    this.introSessionId = session.id;
+    audioSystem.play('level_intro', session.id);
+    const overlay = this.add.container(0, 0).setDepth(UI_THEME.zIndexGroups.modal).setData('kind', 'level-intro');
+    const panel = this.add.rectangle(GAME_CONFIG.width / 2, GAME_CONFIG.height / 2, 640, 250, 0x111827, 0.94)
+      .setStrokeStyle(3, 0xf6bd60, 0.9);
+    const title = this.add.text(GAME_CONFIG.width / 2, GAME_CONFIG.height / 2 - 72, session.definition.name, {
+      fontFamily: 'sans-serif', fontSize: '42px', color: '#fef3c7'
+    }).setOrigin(0.5);
+    const lesson = this.add.text(GAME_CONFIG.width / 2, GAME_CONFIG.height / 2,
+      `目標 ${session.definition.targetScore} / 可用 ${session.definition.availablePoopTypes.length} 種投擲物\nA / D 或移動滑鼠 / Space 或滑鼠左鍵按住蓄力`, {
+        fontFamily: 'sans-serif', fontSize: '19px', color: '#e2e8f0', align: 'center', lineSpacing: 8,
+        wordWrap: { width: 570 }
+      }).setOrigin(0.5);
+    const skip = this.add.text(GAME_CONFIG.width / 2, GAME_CONFIG.height / 2 + 82, '跳過介紹', {
+      fontFamily: 'sans-serif', fontSize: '18px', color: '#111827', backgroundColor: '#f6bd60', padding: { x: 15, y: 8 }
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setData('role', 'level-intro-skip');
+    skip.on(Phaser.Input.Events.POINTER_UP, () => this.hideIntro());
+    overlay.add([panel, title, lesson, skip]);
+    this.introOverlay = overlay;
+  }
+
+  private hideIntro(): void {
+    this.introOverlay?.destroy(true);
+    this.introOverlay = undefined;
   }
 
   private renderPauseOverlay(): void {

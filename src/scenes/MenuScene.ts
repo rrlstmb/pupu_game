@@ -6,6 +6,7 @@ import { GameEvents } from '../runtime/GameEvents';
 import { GAME_CONFIG } from '../runtime/GameConfig';
 import { SceneKeys } from '../runtime/SceneKeys';
 import { emitSceneReady, emitSceneShutdown, registerSceneDisposer } from '../runtime/sceneLifecycle';
+import { audioSystem } from '../systems/audio/SemanticAudioSystem';
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -47,11 +48,21 @@ export class MenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    const openingButton = this.add.text(GAME_CONFIG.width - 28, 270, '觀看開場', {
+      fontFamily: 'sans-serif', fontSize: '18px', color: '#f8fafc', backgroundColor: '#334155', padding: { x: 16, y: 8 }
+    }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true }).setData('role', 'watch-opening');
+    openingButton.on(Phaser.Input.Events.POINTER_UP, () => {
+      audioSystem.play('ui_confirm', 'menu-opening');
+      this.scene.start(SceneKeys.Opening);
+    });
+
     registerSceneDisposer(this, () => {
       levelButtons.forEach((button) => button.removeAllListeners());
+      openingButton.removeAllListeners();
       title.destroy();
       subtitle.destroy();
       levelButtons.forEach((button) => button.destroy());
+      openingButton.destroy();
       emitSceneShutdown(this);
     });
   }

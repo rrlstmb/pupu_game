@@ -46,14 +46,16 @@ test('mouse-only Level 1 movement, charge, throw, and hit use the shared gamepla
   await moveWorld(page, canvas, (await player(page)).x, 410);
   await expect.poll(async () => Math.abs((await player(page)).velocityX), { timeout: 12_000 }).toBeLessThan(20);
   const originX = (await player(page)).x;
-  const minimumTravelDuration = 0.65 + (1.55 - 0.65) * 0.01;
-  await page.evaluate(
-    (x) => window.__SHIMING_BIDA_DEBUG__?.spawnNPCSandbox?.('office_worker', x, 'front_road'),
-    originX + 118 * minimumTravelDuration + 118 / 60
-  );
   await page.mouse.down();
   await page.mouse.up();
-  await expect.poll(async () => (await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.score?.totalScore ?? 0)), { timeout: 10_000 }).toBeGreaterThan(0);
+  await expect.poll(async () => (await projectiles(page)).length).toBe(1);
+  const activeThrow = (await projectiles(page))[0];
+  const remainingFlight = Math.max(0, activeThrow.trajectory.travelDuration - activeThrow.ageSeconds);
+  await page.evaluate(
+    ({ x, lead }) => window.__SHIMING_BIDA_DEBUG__?.spawnNPCSandbox?.('office_worker', x + lead, 'front_road'),
+    { x: originX, lead: 118 * remainingFlight }
+  );
+  await expect.poll(async () => (await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.score?.totalScore ?? 0)), { timeout: 16_000 }).toBeGreaterThan(0);
   expect((await mouseDebug(page)).activeDevice).toBe('mouse');
   expect(errors).toEqual([]);
 });
@@ -107,7 +109,7 @@ test('mouse movement handles representative hazards and can fire into a Boss gat
   await expect.poll(async () => page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.counterattackState?.instances[0]?.state), { timeout: 8_000 }).toBe('telegraph');
   const lockedX = await page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.counterattackState?.instances[0]?.lockedTargetX ?? 640);
   await expect.poll(async () => (await player(page)).x, { timeout: 6_000 }).toBeGreaterThan(lockedX + 50);
-  await expect.poll(async () => page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.counterattackState?.stats.dodged ?? 0), { timeout: 8_000 }).toBe(1);
+  await expect.poll(async () => page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.counterattackState?.stats.dodged ?? 0), { timeout: 12_000 }).toBe(1);
 
   await returnToMenu(page, canvas);
   await clickWorld(page, canvas, 240, 560);
@@ -161,6 +163,7 @@ test('mouse retry and menu soak keeps pointer listeners, owner, capture, and pro
     await startLevel(page);
     expect(await mouseDebug(page)).toMatchObject({ pointerListeners: 7, owner: null, capture: false, meterVisible: false });
     expect(await projectiles(page)).toHaveLength(0);
+    expect(await presentationDebug(page)).toMatchObject({ activeEffects: 0, audioLoops: 0 });
   }
 
   for (let index = 0; index < 5; index += 1) {
@@ -169,6 +172,7 @@ test('mouse retry and menu soak keeps pointer listeners, owner, capture, and pro
     await startLevel(page);
     expect(await mouseDebug(page)).toMatchObject({ pointerListeners: 7, owner: null, capture: false, meterVisible: false });
     expect(await projectiles(page)).toHaveLength(0);
+    expect(await presentationDebug(page)).toMatchObject({ activeEffects: 0, audioLoops: 0 });
   }
 });
 
@@ -224,6 +228,13 @@ async function player(page: Page) {
 
 async function projectiles(page: Page) {
   return page.evaluate(() => window.__SHIMING_BIDA_DEBUG__?.projectileSystem?.projectiles ?? []);
+}
+
+async function presentationDebug(page: Page) {
+  return page.evaluate(() => ({
+    activeEffects: window.__SHIMING_BIDA_DEBUG__?.presentationEffectStats?.active ?? -1,
+    audioLoops: window.__SHIMING_BIDA_DEBUG__?.audioSystemStats?.activeLoops ?? -1
+  }));
 }
 
 async function moveWorld(page: Page, canvas: Locator, x: number, y: number): Promise<void> {

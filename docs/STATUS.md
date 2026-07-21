@@ -6,24 +6,24 @@ Codex must not set any phase to `PASS`.
 
 ## Current Phase
 
-- Phase: 21
-- Name: Level 10 - Clean City Day and Cleanliness Influencer Boss
-- Status: READY_FOR_REVIEW
-- Updated: 2026-07-17
+- Phase: 22
+- Name: Commercial Presentation Layer, Audio, and Opening
+- Status: PHASE_22_READY_FOR_REVIEW
+- Updated: 2026-07-20
 
 ## Current Audit
 
 - Audit: Gate D - Ten-level Campaign Integration and Content Lock
 - Status: GATE_D_READY_FOR_REVIEW
 - Evidence: `docs/evidence/GATE_D.md`
-- Prompt 22 remains `NOT_STARTED`.
+- Gate D remains reviewer-confirmed PASS; Prompt 23 remains `NOT_STARTED`.
 
 ## Current Patch
 
 - Patch: Pre-Prompt 22 Mouse Input
 - Status: MOUSE_INPUT_READY_FOR_REVIEW
 - Evidence: `docs/evidence/PRE_PHASE_22_MOUSE_INPUT.md`
-- Prompt 22 remains `NOT_STARTED`.
+- Mouse Input Patch remains reviewer-confirmed PASS.
 
 ## Audit History
 
@@ -185,7 +185,7 @@ Codex must not set any phase to `PASS`.
 | 19 | READY_FOR_REVIEW | `docs/evidence/PHASE_19.md` |
 | 20 | READY_FOR_REVIEW | `docs/evidence/PHASE_20.md` |
 | 21 | READY_FOR_REVIEW | `docs/evidence/PHASE_21.md` |
-| 22 | NOT_STARTED | |
+| 22 | READY_FOR_REVIEW | `docs/evidence/PHASE_22.md` |
 | 23 | NOT_STARTED | |
 | 24 | NOT_STARTED | |
 | 25 | NOT_STARTED | |

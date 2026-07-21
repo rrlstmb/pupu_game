@@ -116,6 +116,11 @@ import { PhaserCounterattackSystem } from '../systems/counterattack/PhaserCounte
 import { PhaserSurveillanceSystem } from '../systems/surveillance/PhaserSurveillanceSystem';
 import { PhaserSecuritySystem } from '../systems/security/PhaserSecuritySystem';
 import { PhaserBossSystem } from '../systems/boss/PhaserBossSystem';
+import { animationForPlayer } from '../domain/presentation/CharacterPresentation';
+import { PLAYER_SKIN } from '../data/presentation/characterSkins';
+import { PhaserPresentationEffects } from '../systems/presentation/PhaserPresentationEffects';
+import { audioSystem } from '../systems/audio/SemanticAudioSystem';
+import { environmentSkinFor } from '../data/presentation/environmentSkins';
 
 export class GameScene extends Phaser.Scene {
   private levelDefinition: LevelDefinition = LEVEL_01;
@@ -150,6 +155,7 @@ export class GameScene extends Phaser.Scene {
   private securitySystem?: PhaserSecuritySystem;
   private bossState?: BossEncounterState;
   private bossSystem?: PhaserBossSystem;
+  private presentationEffects!: PhaserPresentationEffects;
   private projectileConfig: ProjectileConfig = NORMAL_POOP_PROJECTILE_CONFIG;
   private chargeState: ChargeState = createChargeState();
   private lastLandingHitDebug?: {
@@ -160,8 +166,8 @@ export class GameScene extends Phaser.Scene {
   private isGameOver = false;
   private playerState!: PlayerState;
   private playerAvatar?: Phaser.GameObjects.Container;
-  private playerBody?: Phaser.GameObjects.Rectangle;
-  private playerExpression?: Phaser.GameObjects.Arc;
+  private playerBody?: Phaser.GameObjects.Image;
+  private playerChargeAura?: Phaser.GameObjects.Arc;
   private playerLabel?: Phaser.GameObjects.Text;
   private readonly scrollingLayers: Array<{ sprite: Phaser.GameObjects.TileSprite; factor: number }> = [];
   private debugOverlay?: Phaser.GameObjects.Container;
@@ -224,6 +230,7 @@ export class GameScene extends Phaser.Scene {
     this.projectileSystem = new PhaserProjectileSystem(
       this, this.projectileGroundY(), this.projectileConfig, this.levelBounceSurfaces()
     );
+    this.presentationEffects = new PhaserPresentationEffects(this);
     this.aimAssist = new AimAssist(this);
     this.chargeMeter = new PhaserChargeMeter(this, THROW_CHARGE_CONFIG);
     this.windIndicator = new PhaserWindIndicator(this, GAME_CONFIG.width - 285, 82);
@@ -352,6 +359,7 @@ export class GameScene extends Phaser.Scene {
       eventBus.off(GameEvents.PoopSelectionRequested, this.poopSelectionRequested);
       this.inputAdapter.dispose();
       this.projectileSystem.dispose();
+      this.presentationEffects.dispose();
       this.aimAssist.dispose();
       this.chargeMeter.dispose();
       this.windIndicator.dispose();
@@ -547,6 +555,7 @@ export class GameScene extends Phaser.Scene {
         projectileRulesFor(selectedDefinition)
       );
       if (fired) {
+        audioSystem.play('throw_release', `${this.levelSession.id}:${this.levelSession.metrics.throwCount + 1}`);
         if (this.levelDefinition.security) this.securityState = registerThrowExposure(this.securityState, this.playerState.x, this.levelDefinition.security);
         this.poopInventory = consumeSelectedPoop(this.poopInventory, POOP_DEFINITIONS);
         if (selectedDefinition.id === 'golden_poop' && this.bossState) {
@@ -668,6 +677,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
     }
+    this.renderLandingFeedback(npcProjectiles, hitResult.events);
     const hitProjectileIds = new Set([...hitResult.projectileIdsToRecycle, ...bossProjectileIds]);
     const missedRecycleCount = Math.max(0, naturalRecycleCount - hitProjectileIds.size);
     for (let index = 0; index < missedRecycleCount; index += 1) {
@@ -758,14 +768,33 @@ export class GameScene extends Phaser.Scene {
 
   private renderInteractionFeedback(events: readonly GameplayEvent[]): void {
     for (const event of events) {
-      if (event.type !== GameplayEventTypes.ProjectileBlocked) continue;
+      if (event.type !== GameplayEventTypes.ProjectileBlocked && event.type !== GameplayEventTypes.ProjectileHit) continue;
       const npc = this.npcSpawnerState.npcs.find((candidate) => candidate.id === event.npcId);
       if (!npc) continue;
-      const label = this.add.text(npc.x, npc.y - 58 * npc.scale, event.feedbackLabel, {
-        fontFamily: 'sans-serif', fontSize: '18px', color: '#fef3c7', backgroundColor: '#7c2d12',
-        padding: { x: 8, y: 4 }
-      }).setOrigin(0.5).setDepth(Depths.particles);
-      this.time.delayedCall(900, () => label.destroy());
+      if (event.type === GameplayEventTypes.ProjectileBlocked) {
+        this.presentationEffects.burst(event.token, npc.x, npc.y - 24 * npc.scale, event.feedbackLabel, 0xfacc15, true);
+        audioSystem.play('umbrella_block', event.token);
+      } else {
+        const heavy = event.poopType === 'jumbo_poop' || event.poopType === 'golden_poop';
+        this.presentationEffects.burst(event.token, npc.x, npc.y - 24 * npc.scale, `+${event.validHitCount}`, heavy ? 0xfde047 : 0x5eead4, heavy);
+        const cue = event.interactionTags.includes('umbrella_cracked') ? 'umbrella_break'
+          : event.poopType === 'splash_poop' ? 'splash_hit'
+            : event.poopType === 'sticky_poop' ? 'sticky_apply'
+              : event.poopType === 'golden_poop' ? 'boss_final_hit' : 'projectile_hit';
+        audioSystem.play(cue, event.token);
+      }
+    }
+  }
+
+  private renderLandingFeedback(projectiles: readonly Projectile[], events: readonly GameplayEvent[]): void {
+    const resolvedIds = new Set(events.flatMap((event) =>
+      event.type === GameplayEventTypes.ProjectileHit || event.type === GameplayEventTypes.ProjectileBlocked ? [event.projectileId] : []
+    ));
+    for (const projectile of projectiles) {
+      if (projectile.status !== 'landed' || resolvedIds.has(projectile.id)) continue;
+      const token = `landing:${this.levelSession?.id}:${projectile.id}`;
+      this.presentationEffects.burst(token, projectile.position.x, projectile.position.y, 'MISS', 0x94a3b8);
+      audioSystem.play('projectile_miss', token);
     }
   }
 
@@ -1188,6 +1217,7 @@ export class GameScene extends Phaser.Scene {
   private renderWorldLayout(layout: WorldLayout): void {
     this.renderZoneBands(layout);
     this.renderParallax(layout.parallaxLayers);
+    this.renderEnvironmentDetails(layout);
     this.renderLanes(layout.lanes);
     this.renderRooftop(layout);
     this.renderWeather(layout);
@@ -1208,6 +1238,33 @@ export class GameScene extends Phaser.Scene {
         .setOrigin(0, 0)
         .setDepth(Depths.particles - 2);
     }
+  }
+
+  private renderEnvironmentDetails(layout: WorldLayout): void {
+    const skin = environmentSkinFor(this.levelDefinition.visual.profile);
+    const skylineBottom = layout.zones[0].height;
+    const details = this.add.graphics().setDepth(Depths.backgroundNear + 3);
+    const signage = this.add.graphics().setDepth(Depths.alleyBack + 8);
+    for (let index = 0; index < 14; index += 1) {
+      const x = 28 + index * 92;
+      const y = 38 + (index % 3) * 34;
+      details.fillStyle(skin.accent, 0.42).fillRect(x, y, 26, 34);
+      details.lineStyle(2, 0x111827, 0.35).lineBetween(x + 13, y, x + 13, y + 34);
+    }
+    for (let index = 0; index < 9; index += 1) {
+      const x = 74 + index * 145;
+      signage.fillStyle(skin.accent, 0.72).fillRect(x - 56, skylineBottom + 22, 112, 30);
+      signage.lineStyle(2, 0xf8fafc, 0.3).strokeRect(x - 56, skylineBottom + 22, 112, 30);
+      if (index % 3 === 1) this.add.text(x, skylineBottom + 37, skin.atmosphere.toUpperCase(), {
+        fontFamily: 'sans-serif', fontSize: '11px', color: '#f8fafc'
+      }).setOrigin(0.5).setDepth(Depths.alleyBack + 9);
+    }
+    for (const lane of layout.lanes) {
+      this.add.tileSprite(0, lane.bounds.y, layout.width, lane.bounds.height, 'environment-city-tile')
+        .setOrigin(0, 0).setTint(skin.road).setAlpha(0.12).setDepth(lane.depth + 1);
+    }
+    this.add.tileSprite(0, layout.rooftop.y, layout.width, layout.rooftop.height, 'environment-rooftop-tile')
+      .setOrigin(0, 0).setTint(skin.rooftop).setAlpha(0.16).setDepth(Depths.rooftop + 1);
   }
 
   private renderCleanupDayDecorations(layout: WorldLayout): void {
@@ -1344,11 +1401,11 @@ export class GameScene extends Phaser.Scene {
     this.add
       .line(0, 0, layout.rooftop.minX, layout.rooftop.y, layout.rooftop.minX, layout.height, 0xf87171, 0.75)
       .setOrigin(0, 0)
-      .setDepth(Depths.debug - 10);
+      .setDepth(Depths.debug - 10).setVisible(this.debugOverlayVisible);
     this.add
       .line(0, 0, layout.rooftop.maxX, layout.rooftop.y, layout.rooftop.maxX, layout.height, 0xf87171, 0.75)
       .setOrigin(0, 0)
-      .setDepth(Depths.debug - 10);
+      .setDepth(Depths.debug - 10).setVisible(this.debugOverlayVisible);
 
     for (const cover of layout.rooftop.coverSlots) {
       this.add
@@ -1370,9 +1427,10 @@ export class GameScene extends Phaser.Scene {
   private renderPlayer(): void {
     const avatar = this.add.container(this.playerState.x, this.playerY()).setDepth(Depths.cover + 10);
     const shadow = this.add.ellipse(0, PLAYER_MOVEMENT_CONFIG.height / 2 + 8, 58, 14, 0x111827, 0.45);
-    const body = this.add.rectangle(0, 0, PLAYER_MOVEMENT_CONFIG.width, PLAYER_MOVEMENT_CONFIG.height, 0xf6bd60, 1);
-    const head = this.add.circle(0, -PLAYER_MOVEMENT_CONFIG.height / 2 + 8, 22, 0xf7f0dc, 1);
-    const expression = this.add.circle(8, -PLAYER_MOVEMENT_CONFIG.height / 2 + 6, 5, 0x111827, 1);
+    const body = this.add.image(0, 4, PLAYER_SKIN.assetKey)
+      .setDisplaySize(PLAYER_MOVEMENT_CONFIG.width * 1.65, PLAYER_MOVEMENT_CONFIG.height * 1.5);
+    const chargeAura = this.add.circle(0, -8, 46, 0xfacc15, 0)
+      .setStrokeStyle(5, 0xfef08a, 0);
     const label = this.add
       .text(0, PLAYER_MOVEMENT_CONFIG.height / 2 + 26, 'idle', {
         fontFamily: 'monospace',
@@ -1383,11 +1441,11 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 0);
 
-    avatar.add([shadow, body, head, expression, label]);
-    avatar.setData('role', 'player-placeholder');
+    avatar.add([shadow, chargeAura, body, label]);
+    avatar.setData('role', 'player-character');
     this.playerAvatar = avatar;
     this.playerBody = body;
-    this.playerExpression = expression;
+    this.playerChargeAura = chargeAura;
     this.playerLabel = label;
     this.syncPlayerView();
   }
@@ -1395,14 +1453,23 @@ export class GameScene extends Phaser.Scene {
   private syncPlayerView(): void {
     this.playerAvatar?.setPosition(this.playerState.x, this.playerY());
 
-    const stateColor: Record<PlayerState['visualState'], number> = {
-      idle: 0xf6bd60,
-      move: 0x60a5fa,
-      nervous: 0xf87171
-    };
-    this.playerBody?.setFillStyle(stateColor[this.playerState.visualState], 1);
-    this.playerExpression?.setScale(this.playerState.visualState === 'nervous' ? 1.8 : 1);
-    this.playerLabel?.setText(this.playerState.visualState);
+    const animation = animationForPlayer(
+      this.playerState,
+      this.inputIntent,
+      this.chargeState.chargePower,
+      this.chargeState.isCharging,
+      this.isGameOver,
+      this.levelSession?.result?.outcome === 'success'
+    );
+    const moving = animation === 'walk';
+    const charging = animation === 'charge' || animation === 'charge_start' || animation === 'charge_full';
+    this.playerBody?.setFlipX(this.playerState.velocityX < -1)
+      .setRotation(animation === 'throw' ? -0.14 : moving ? Math.sin(this.playerState.x * 0.05) * 0.035 : 0)
+      .setScale(animation === 'charge_full' ? 1.09 : charging ? 1 + this.chargeState.chargePower * 0.05 : 1)
+      .setTint(this.playerState.visualState === 'nervous' ? 0xfca5a5 : 0xffffff);
+    this.playerChargeAura?.setAlpha(charging ? 0.18 + this.chargeState.chargePower * 0.62 : 0)
+      .setScale(0.75 + this.chargeState.chargePower * 0.35);
+    this.playerLabel?.setText(animation).setVisible(this.debugOverlayVisible);
   }
 
   private playerY(): number {
@@ -1573,6 +1640,8 @@ export class GameScene extends Phaser.Scene {
     window.__SHIMING_BIDA_DEBUG__.securityState = this.securityState;
     window.__SHIMING_BIDA_DEBUG__.securityViewPool = this.securitySystem?.stats();
     window.__SHIMING_BIDA_DEBUG__.bossState = this.bossState;
+    window.__SHIMING_BIDA_DEBUG__.presentationEffectStats = this.presentationEffects.stats();
+    window.__SHIMING_BIDA_DEBUG__.audioSystemStats = audioSystem.stats();
     window.__SHIMING_BIDA_DEBUG__.isGameOver = this.isGameOver;
     window.__SHIMING_BIDA_DEBUG__.isPlayerInCover = this.isPlayerInCover();
     window.__SHIMING_BIDA_DEBUG__.projectileSystem = this.projectileSystem.snapshot();
@@ -1697,6 +1766,8 @@ export class GameScene extends Phaser.Scene {
     delete debug.securityState;
     delete debug.securityViewPool;
     delete debug.bossState;
+    delete debug.presentationEffectStats;
+    delete debug.audioSystemStats;
     delete debug.isGameOver;
     delete debug.isPlayerInCover;
     delete debug.projectileSystem;
