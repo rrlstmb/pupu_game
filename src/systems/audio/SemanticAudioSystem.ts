@@ -9,6 +9,8 @@ export class SemanticAudioSystem {
   private activeVoices = 0;
   private activeLoops = 0;
   private muted = false;
+  private masterVolume = 1;
+  private busVolumes = { music: 1, ambience: 1, sfx: 1, ui: 1 };
 
   play(event: AudioSemanticEvent, token?: string): boolean {
     const definition = AUDIO_MANIFEST.find((candidate) => candidate.event === event);
@@ -27,7 +29,8 @@ export class SemanticAudioSystem {
       oscillator.type = definition.waveform === 'noise' ? 'triangle' : definition.waveform;
       oscillator.frequency.value = definition.frequency;
       gain.gain.setValueAtTime(0.0001, this.context.currentTime);
-      gain.gain.exponentialRampToValueAtTime(Math.max(0.001, definition.gain), this.context.currentTime + 0.01);
+      const volume = definition.gain * this.masterVolume * this.busVolumes[definition.bus];
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.001, volume), this.context.currentTime + 0.01);
       gain.gain.exponentialRampToValueAtTime(0.0001, this.context.currentTime + definition.durationMs / 1000);
       oscillator.connect(gain).connect(this.context.destination);
       this.activeVoices += 1;
@@ -42,6 +45,10 @@ export class SemanticAudioSystem {
   }
 
   setMuted(muted: boolean): void { this.muted = muted; }
+  configure(audio: { readonly masterVolume: number; readonly musicVolume: number; readonly ambienceVolume: number; readonly sfxVolume: number; readonly uiVolume: number; readonly muted: boolean }): void {
+    this.muted = audio.muted; this.masterVolume = audio.masterVolume;
+    this.busVolumes = { music: audio.musicVolume, ambience: audio.ambienceVolume, sfx: audio.sfxVolume, ui: audio.uiVolume };
+  }
   pause(): void { void this.context?.suspend().catch(() => undefined); }
   resume(): void { void this.context?.resume().catch(() => undefined); }
   reset(): void { this.ledger = createPresentationLedger(); this.activeLoops = 0; }

@@ -8,6 +8,7 @@ type MouseInputOptions = {
   readonly getPlayerX: () => number;
   readonly isOverUi: (worldX: number, worldY: number) => boolean;
   readonly canStartGameplayPointer: () => boolean;
+  readonly shouldIgnoreMouse?: () => boolean;
 };
 
 export class MouseInputAdapter {
@@ -80,7 +81,7 @@ export class MouseInputAdapter {
   hasPointerCapture(): boolean { return this.capturedPointerId !== null; }
 
   private readonly onPointerMove = (event: PointerEvent) => {
-    if (event.pointerType !== 'mouse') return;
+    if (event.pointerType !== 'mouse' || this.options.shouldIgnoreMouse?.()) return;
     const point = this.toWorld(event);
     this.pointerWorldX = point.x;
     this.pointerWorldY = point.y;
@@ -93,7 +94,7 @@ export class MouseInputAdapter {
   };
 
   private readonly onPointerDown = (event: PointerEvent) => {
-    if (event.pointerType !== 'mouse' || event.button !== 0) return;
+    if (event.pointerType !== 'mouse' || event.button !== 0 || this.options.shouldIgnoreMouse?.()) return;
     const point = this.toWorld(event);
     this.pointerWorldX = point.x;
     this.pointerWorldY = point.y;
@@ -115,7 +116,7 @@ export class MouseInputAdapter {
   };
 
   private readonly onPointerUp = (event: PointerEvent) => {
-    if (event.pointerType !== 'mouse' || event.button !== 0) return;
+    if (event.pointerType !== 'mouse' || event.button !== 0 || this.options.shouldIgnoreMouse?.()) return;
     if (this.held) {
       this.held = false;
       this.released = true;

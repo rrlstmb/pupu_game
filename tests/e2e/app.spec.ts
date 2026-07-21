@@ -1,6 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { seedCompletedCampaignThroughLevel } from './save-fixtures';
 
+const EXPECTED_INPUT_LISTENERS = 23;
+
 test.beforeEach(async ({ page }) => seedCompletedCampaignThroughLevel(page, 10));
 import type { BossEncounterState } from '../../src/domain/boss/BossPhaseStateMachine';
 
@@ -104,7 +106,7 @@ test('phase 03 keyboard movement stays horizontal, bounded, and does not duplica
 
   const firstEntryListeners = await inputListenerCount(page);
   const initial = await playerState(page);
-  expect(firstEntryListeners).toBe(13);
+  expect(firstEntryListeners).toBe(EXPECTED_INPUT_LISTENERS);
 
   await page.keyboard.down('KeyD');
   await page.waitForTimeout(350);
@@ -347,7 +349,7 @@ test('retro Gate A survives ten scene entries, pause, blur, and projectile view 
   for (let cycle = 0; cycle < 10; cycle += 1) {
     await clickMenuStart(page, canvas);
     await expect.poll(() => activeScenes(page)).toContain('GameScene');
-    expect(await inputListenerCount(page)).toBe(13);
+    expect(await inputListenerCount(page)).toBe(EXPECTED_INPUT_LISTENERS);
     const activeListenerCounts = await gameSceneLifecycleListenerCounts(page);
     activeLifecycleBaseline ??= activeListenerCounts;
     expect(activeListenerCounts).toEqual(activeLifecycleBaseline);
@@ -601,7 +603,7 @@ test('phase 08 raises alert, decays in cover, fails at 100, and retries cleanly'
   expect(await inputListenerCount(page)).toBe(inputListenersBeforeRetry);
   expect(await gameSceneLifecycleListenerCounts(page)).toEqual(lifecycleListenersBeforeRetry);
   expect(await eventBusListenerCounts(page)).toEqual(eventBusListenersBeforeRetry);
-  expect(eventBusListenersBeforeRetry).toEqual({ score: 1, alert: 1, inventory: 1, level: 1 });
+  expect(eventBusListenersBeforeRetry).toEqual({ score: 1, alert: 2, inventory: 1, level: 2 });
   await startLevelForTest(page);
   await expect.poll(async () => (await npcSpawner(page)).npcs.length).toBeGreaterThan(0);
   expect((await npcSpawner(page)).npcs[0]).toMatchObject({ id: 1, validHitCount: 0 });
@@ -1550,7 +1552,7 @@ test('phase 21 level 10 failure and retry reset encounter state and final invent
   expect(reset.processedInteractionTokens).toEqual([]);
   expect(reset.blockedStageCount).toBe(0);
   expect(await poopStock(page, 'golden_poop')).toBe(0);
-  expect(await inputListenerCount(page)).toBe(13);
+  expect(await inputListenerCount(page)).toBe(EXPECTED_INPUT_LISTENERS);
 });
 
 async function surveillanceState(page: Page): Promise<{

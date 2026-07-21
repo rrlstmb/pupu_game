@@ -1666,8 +1666,10 @@ export class GameScene extends Phaser.Scene {
     window.__SHIMING_BIDA_DEBUG__.landingHit = this.lastLandingHitDebug;
     window.__SHIMING_BIDA_DEBUG__.inputListenerCount = this.inputAdapter.getBoundListenerCount();
     window.__SHIMING_BIDA_DEBUG__.pointerListenerCount = this.inputAdapter.getPointerListenerCount();
+    window.__SHIMING_BIDA_DEBUG__.touchListenerCount = this.inputAdapter.getTouchListenerCount();
     window.__SHIMING_BIDA_DEBUG__.pointerCaptureActive = this.inputAdapter.hasPointerCapture();
     window.__SHIMING_BIDA_DEBUG__.chargeInputOwner = this.inputAdapter.getChargeOwner();
+    window.__SHIMING_BIDA_DEBUG__.touchInputOwners = this.inputAdapter.getTouchOwners();
     window.__SHIMING_BIDA_DEBUG__.gameplayInputIntent = this.inputIntent;
     const clock = this.time as unknown as { _active: readonly unknown[]; _pendingInsertion: readonly unknown[] };
     window.__SHIMING_BIDA_DEBUG__.sceneTimerCount = clock._active.length + clock._pendingInsertion.length;

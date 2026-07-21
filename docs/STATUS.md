@@ -6,9 +6,9 @@ Codex must not set any phase to `PASS`.
 
 ## Current Phase
 
-- Phase: 23
-- Name: Local Progress, Unlocks, Titles, and Modes
-- Status: PHASE_23_READY_FOR_REVIEW
+- Phase: 24
+- Name: Touch, Responsive, Accessibility, and Settings
+- Status: PHASE_24_READY_FOR_REVIEW
 - Updated: 2026-07-21
 
 ## Current Audit
@@ -16,7 +16,7 @@ Codex must not set any phase to `PASS`.
 - Audit: Gate D - Ten-level Campaign Integration and Content Lock
 - Status: GATE_D_READY_FOR_REVIEW
 - Evidence: `docs/evidence/GATE_D.md`
-- Gate D remains reviewer-confirmed PASS; Prompt 23 remains `NOT_STARTED`.
+- Gate D remains reviewer-confirmed PASS; Prompt 24 is ready for reviewer verification.
 
 ## Current Patch
 
@@ -187,5 +187,5 @@ Codex must not set any phase to `PASS`.
 | 21 | READY_FOR_REVIEW | `docs/evidence/PHASE_21.md` |
 | 22 | READY_FOR_REVIEW | `docs/evidence/PHASE_22.md` |
 | 23 | READY_FOR_REVIEW | `docs/evidence/PHASE_23.md` |
-| 24 | NOT_STARTED | |
+| 24 | READY_FOR_REVIEW | `docs/evidence/PHASE_24.md` |
 | 25 | NOT_STARTED | |

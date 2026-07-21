@@ -1,7 +1,8 @@
 import type { MouseInputConfig } from '../../data/mouseInput';
 import { horizontalIntent, type ActionSnapshot, type InputSnapshot } from './ActionState';
+import type { TouchInputSnapshot } from './TouchInput';
 
-export type InputDevice = 'keyboard' | 'mouse';
+export type InputDevice = 'keyboard' | 'mouse' | 'touch';
 export type ChargeInputOwner = InputDevice | null;
 
 export type MouseInputSnapshot = {
@@ -27,27 +28,31 @@ export class GameplayInputController {
   private chargeOwner: ChargeInputOwner = null;
   private activeDevice: InputDevice = 'keyboard';
 
-  resolve(keyboard: InputSnapshot, mouse: MouseInputSnapshot): GameplayInputIntent {
+  resolve(keyboard: InputSnapshot, mouse: MouseInputSnapshot, touch: TouchInputSnapshot = EMPTY_TOUCH): GameplayInputIntent {
     const keyboardAxisActive = keyboard.left.held || keyboard.right.held;
     const keyboardUsed = keyboardAxisActive || Object.values(keyboard).some(
       (action) => action.pressed || action.released
     );
     if (keyboardUsed) this.activeDevice = 'keyboard';
+    else if (touch.activeThisFrame) this.activeDevice = 'touch';
     else if (mouse.activeThisFrame) this.activeDevice = 'mouse';
 
     if (this.chargeOwner === null) {
       if (keyboard.throw.pressed) this.chargeOwner = 'keyboard';
+      else if (touch.charge.pressed) this.chargeOwner = 'touch';
       else if (mouse.charge.pressed) this.chargeOwner = 'mouse';
     }
 
     const charge = this.chargeOwner === 'keyboard'
       ? keyboard.throw
-      : this.chargeOwner === 'mouse' ? mouse.charge : EMPTY_ACTION;
+      : this.chargeOwner === 'mouse' ? mouse.charge
+        : this.chargeOwner === 'touch' ? touch.charge : EMPTY_ACTION;
     const resolvedOwner = this.chargeOwner;
     if (resolvedOwner !== null && (!charge.held || charge.released)) this.chargeOwner = null;
 
     return {
-      horizontalAxis: keyboardAxisActive ? horizontalIntent(keyboard) : clamp(mouse.horizontalAxis, -1, 1),
+      horizontalAxis: keyboardAxisActive ? horizontalIntent(keyboard)
+        : touch.horizontalAxis !== 0 ? clamp(touch.horizontalAxis, -1, 1) : clamp(mouse.horizontalAxis, -1, 1),
       chargePressed: charge.pressed,
       chargeHeld: charge.held,
       chargeReleased: charge.released,
@@ -88,6 +93,7 @@ export function pointerClientToWorld(
 }
 
 const EMPTY_ACTION: ActionSnapshot = { pressed: false, held: false, released: false };
+const EMPTY_TOUCH: TouchInputSnapshot = { horizontalAxis: 0, charge: EMPTY_ACTION, activeThisFrame: false };
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));

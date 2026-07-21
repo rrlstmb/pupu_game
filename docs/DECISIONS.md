@@ -96,3 +96,22 @@ ADR entries are append-only. Reversible assumptions are acceptable when recorded
 - CI provider is unknown; Phase 01 should keep scripts provider-agnostic.
 - Asset pipeline is unknown; use placeholder assets only when validating presentation, never rule completion.
 - Browser support targets are unknown; default to current Chromium for Playwright smoke until product targets are specified.
+## ADR-0085: Touch Uses Unified Intent With Independent Pointer Ownership
+
+Touch movement and charge have separate pointer IDs but resolve through `GameplayInputController`. Touch never moves Player or spawns projectiles directly. Touch-like pen input and the synthetic-mouse suppression window are data driven.
+
+## ADR-0086: Responsive Layout Preserves Canonical World Coordinates
+
+`ResponsiveLayoutService` owns breakpoints, safe area, VisualViewport fallback, and control regions. Gameplay remains 1280x720; responsive scale and DPR affect presentation only.
+
+## ADR-0087: Settings Are Separate From Progress
+
+`shiming-bida.settings.v1` has its own schema, repository, service, recovery, future-version policy, and reset path. Neither progress reset nor settings reset clears the other key.
+
+## ADR-0088: Accessibility Preferences Never Change Domain Timing
+
+Reduced motion, shake, zoom, flash, contrast, and text scale alter only presentation. Hazard warning durations, projectile timing, collisions, and phase transitions remain domain-owned.
+
+## ADR-0089: Focus And Announcements Are Bounded Presentation Bridges
+
+DOM focus proxies dispatch existing Phaser UI actions and never gameplay commands directly. Settings uses a focus trap and pauses gameplay. Live-region and visual-cue receipts are token-deduplicated and bounded; no queue survives application disposal.

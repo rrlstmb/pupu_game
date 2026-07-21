@@ -27,6 +27,9 @@ import type { PresentationEffectStats } from './systems/presentation/PhaserPrese
 import type { AudioSystemStats } from './systems/audio/SemanticAudioSystem';
 import type { RunContext } from './domain/modes/ModeRegistry';
 import type { SaveServiceState } from './services/SaveService';
+import type { SettingsData } from './domain/settings/SettingsData';
+import type { SettingsAvailability } from './services/SettingsService';
+import type { ResponsiveLayoutSnapshot } from './domain/layout/ResponsiveLayout';
 
 declare global {
   interface Window {
@@ -104,14 +107,20 @@ declare global {
       };
       inputListenerCount?: number;
       pointerListenerCount?: number;
+      touchListenerCount?: number;
       pointerCaptureActive?: boolean;
       chargeInputOwner?: ChargeInputOwner;
+      touchInputOwners?: { readonly movement: number | null; readonly charge: number | null };
       gameplayInputIntent?: GameplayInputIntent;
       sceneTimerCount?: number;
       debugOverlayVisible?: boolean;
       levelSession?: LevelSession;
       runContext?: RunContext;
       saveState?: SaveServiceState;
+      settingsState?: { readonly data: SettingsData; readonly availability: SettingsAvailability };
+      responsiveLayout?: ResponsiveLayoutSnapshot;
+      announce?: (message: string, token: string, priority?: 'polite' | 'assertive') => boolean;
+      accessibilityStats?: { readonly announcerQueue: number; readonly canvasControls: number };
       advanceLevelTime?: (seconds: number) => void;
       spawnNPCSandbox?: (npcType: string, x?: number, laneId?: 'back_shop' | 'mid_sidewalk' | 'front_road') => void;
       setPlayerX?: (x: number) => void;

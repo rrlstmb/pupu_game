@@ -15,6 +15,8 @@ import { UI_THEME } from '../data/presentation/uiTheme';
 import { PROJECTILE_SKINS } from '../data/presentation/projectileSkins';
 import { campaignRunContext, type RunContext } from '../domain/modes/ModeRegistry';
 import { saveService } from '../runtime/PersistenceRuntime';
+import { responsiveLayout } from '../runtime/LayoutRuntime';
+import { settingsService } from '../runtime/SettingsRuntime';
 
 export class HUDScene extends Phaser.Scene {
   private scoreText?: Phaser.GameObjects.Text;
@@ -50,6 +52,8 @@ export class HUDScene extends Phaser.Scene {
     this.levelSession = levelSession;
     this.renderLevelState();
   };
+  private unsubscribeLayout?: () => void;
+  private unsubscribeSettings?: () => void;
 
   constructor() {
     super(SceneKeys.HUD);
@@ -82,7 +86,7 @@ export class HUDScene extends Phaser.Scene {
       padding: { x: 10, y: 6 }
     });
     this.controlHintText = this.add
-      .text(GAME_CONFIG.width / 2, GAME_CONFIG.height - 12, 'A/D 或移動滑鼠　Space 或按住滑鼠左鍵蓄力，放開投擲', {
+      .text(GAME_CONFIG.width / 2, GAME_CONFIG.height - 12, 'A/D、滑鼠或左側觸控移動　Space、滑鼠左鍵或右側按鈕蓄力／放開投擲', {
         fontFamily: 'monospace', fontSize: '14px', color: '#d1d5db', backgroundColor: '#111827',
         padding: { x: 8, y: 4 }
       })
@@ -122,6 +126,8 @@ export class HUDScene extends Phaser.Scene {
     this.renderScoreState();
     this.renderPoopInventory();
     this.renderAlertState();
+    this.unsubscribeLayout = responsiveLayout.subscribe(() => this.applyResponsiveHud());
+    this.unsubscribeSettings = settingsService().subscribe(() => this.applyResponsiveHud());
 
     registerSceneDisposer(this, () => {
       eventBus.off(GameEvents.PoopInventoryUpdated, this.poopInventoryUpdated);
@@ -129,6 +135,7 @@ export class HUDScene extends Phaser.Scene {
       eventBus.off(GameEvents.ScoreUpdated, this.scoreUpdated);
       eventBus.off(GameEvents.LevelUpdated, this.levelUpdated);
       eventBus.off(GameEvents.RunContextUpdated, this.runContextUpdated);
+      this.unsubscribeLayout?.(); this.unsubscribeSettings?.();
       this.scoreText?.destroy();
       this.poopText?.destroy();
       this.alertText?.destroy();
@@ -151,6 +158,20 @@ export class HUDScene extends Phaser.Scene {
     });
   }
 
+  private applyResponsiveHud(): void {
+    const mode = responsiveLayout.snapshot.layoutMode;
+    const mobile = mode === 'mobile_portrait' || mode === 'mobile_landscape';
+    const portrait = mode === 'mobile_portrait' || mode === 'tablet_portrait';
+    const scale = settingsService().data.visual.textScale;
+    this.scoreText?.setFontSize(Math.round((mobile ? 28 : 20) * scale)).setPosition(24, 20);
+    this.poopText?.setFontSize(Math.round((mobile ? 26 : 18) * scale)).setPosition(24, mobile ? 96 : 82);
+    this.alertText?.setFontSize(Math.round((mobile ? 27 : 18) * scale)).setPosition(GAME_CONFIG.width - 24, mobile ? 96 : 82);
+    this.levelText?.setFontSize(Math.round((mobile ? 29 : 19) * scale));
+    this.breakdownText?.setVisible(!mobile && Boolean(this.scoreState.breakdowns.length));
+    this.controlHintText?.setVisible(!portrait && settingsService().data.visual.showControlHints);
+    this.poopButtons.forEach((button) => button.setFontSize(Math.round((mobile ? 25 : 16) * scale)));
+  }
+
   private renderScoreState(): void {
     const timeWindow = this.scoreState.comboRemainingSeconds.toFixed(1);
     const scoreText = [
@@ -164,7 +185,7 @@ export class HUDScene extends Phaser.Scene {
       window.__SHIMING_BIDA_DEBUG__.hudScoreText = scoreText;
     }
     const latest = this.scoreState.breakdowns[this.scoreState.breakdowns.length - 1];
-    this.breakdownText?.setVisible(Boolean(latest));
+    this.breakdownText?.setVisible(Boolean(latest) && !responsiveLayout.snapshot.layoutMode.startsWith('mobile'));
     if (latest) {
       const breakdownText = [
         `+${latest.finalScore} ${latest.precisionGrade}`,
@@ -212,6 +233,7 @@ export class HUDScene extends Phaser.Scene {
         return button;
       });
       this.poopButtonSignature = signature;
+      this.applyResponsiveHud();
     }
 
     this.poopButtons.forEach((button, index) => {
@@ -283,7 +305,7 @@ export class HUDScene extends Phaser.Scene {
     const lesson = this.add.text(GAME_CONFIG.width / 2, GAME_CONFIG.height / 2,
       introSeen
         ? `再次挑戰 / 目標 ${session.definition.targetScore}\n按下方按鈕可略過提示`
-        : `目標 ${session.definition.targetScore} / 可用 ${session.definition.availablePoopTypes.length} 種投擲物\nA / D 或移動滑鼠 / Space 或滑鼠左鍵按住蓄力`, {
+        : `目標 ${session.definition.targetScore} / 可用 ${session.definition.availablePoopTypes.length} 種投擲物\nA / D、滑鼠或左側觸控移動 / Space、滑鼠左鍵或投擲按鈕蓄力`, {
         fontFamily: 'sans-serif', fontSize: '19px', color: '#e2e8f0', align: 'center', lineSpacing: 8,
         wordWrap: { width: 570 }
       }).setOrigin(0.5);
